@@ -1,0 +1,948 @@
+% !TEX program = xelatex
+% =====================================================================
+% Channel Proxy v4 -> v6 -> v7 변경 이력 (Korean)
+% IMPORTANT: 반드시 XeLaTeX 으로 컴파일 (Overleaf: Menu -> Compiler -> XeLaTeX)
+% =====================================================================
+\documentclass[11pt,a4paper]{article}
+\usepackage{kotex}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{listings}
+\usepackage[table]{xcolor}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{caption}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black!50!blue,
+  urlcolor=blue!60!black,
+  citecolor=black,
+}
+
+% --------------- code style ---------------
+\definecolor{codegreen}{rgb}{0.20,0.55,0.20}
+\definecolor{codeblue}{rgb}{0.10,0.20,0.65}
+\definecolor{codered}{rgb}{0.75,0.10,0.10}
+\definecolor{codebg}{rgb}{0.975,0.975,0.975}
+\definecolor{starcolor}{rgb}{0.92,0.50,0.05}
+\definecolor{rowblue}{rgb}{0.92,0.95,1.00}
+\definecolor{rowgray}{rgb}{0.96,0.96,0.96}
+
+\lstdefinestyle{pystyle}{
+    backgroundcolor=\color{codebg},
+    commentstyle=\color{codegreen}\itshape,
+    keywordstyle=\color{codeblue}\bfseries,
+    stringstyle=\color{codered},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numberstyle=\tiny\color{black!50},
+    numbersep=6pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    language=Python,
+    frame=single,
+    framerule=0.4pt,
+    rulecolor=\color{black!30},
+    aboveskip=6pt,
+    belowskip=6pt,
+}
+\lstset{style=pystyle}
+
+\renewcommand{\lstlistingname}{코드}
+\renewcommand{\contentsname}{목차}
+\renewcommand{\abstractname}{개요}
+\renewcommand{\refname}{참고문헌}
+\renewcommand{\figurename}{그림}
+\renewcommand{\tablename}{표}
+
+% --------------- star severity ---------------
+\newcommand{\sone}{\textcolor{starcolor}{$\bigstar$}}
+\newcommand{\stwo}{\textcolor{starcolor}{$\bigstar\bigstar$}}
+\newcommand{\sthree}{\textcolor{starcolor}{$\bigstar\bigstar\bigstar$}}
+
+\newcommand{\vfour}{\texttt{v4.py}}
+\newcommand{\vsix}{\texttt{v6.py}}
+\newcommand{\vseven}{\texttt{v7.py}}
+
+% --------------- bug header ---------------
+\newcommand{\bugitem}[3]{%
+  \subsection{[\##1] #2 \hfill #3}%
+  \vspace{-0.5em}%
+}
+
+% --------------- title format ---------------
+\titleformat{\section}
+  {\normalfont\Large\bfseries}{\thesection.}{0.6em}{}
+\titleformat{\subsection}
+  {\normalfont\large\bfseries}{\thesubsection}{0.6em}{}
+
+\setlist[itemize]{leftmargin=1.4em,topsep=2pt,itemsep=2pt}
+
+\title{\textbf{G1C Multi-UE MIMO Channel Proxy} \\[0.4em]
+       \large 변경 이력: v4 $\to$ v6 $\to$ v7}
+\author{}
+\date{2026-05-08}
+
+% =====================================================================
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+본 문서는 \vfour{} $\to$ \vsix{} $\to$ \vseven{} 의 전체 코드 수정 사항
+총 29 건을 정리한다. v6 는 v4 의 채널 생성 물리 모델링 및 시스템 견고성
+문제를 집중 처리하였고, v7 는 v6 를 기반으로 OAI attach 단계의 제어 평면
+안정화 메커니즘을 추가하고 P1B 거리 추정 방식을 보정하였다. 각 수정
+사항은 영향 범위에 따라 \sthree{} (채널 출력 물리 정확성 또는 다중 UE
+환경의 동시성 처리량에 영향), \stwo{} (시스템 견고성, 자원 점유,
+제어 평면 안정성에 영향), \sone{} (코드 스타일, 호환성, 경계 조건)
+세 등급으로 분류된다. 각 항목에는 \vfour{} 와 \vseven{} 의 해당
+코드 위치를 명시하여 검증을 용이하게 하였다.
+\end{abstract}
+
+\tableofcontents
+\vspace{1em}
+
+% =====================================================================
+\section{별 등급 정의 및 버전 흐름}
+\label{sec:overview}
+
+\subsection{별 등급의 의미}
+\begin{itemize}
+  \item \sthree{} \ \textbf{핵심 수정}: 채널 생성의 물리 모델링 수식 오류,
+        또는 다중 UE 환경에서 전체 처리량을 좌우하는 동시성 병목에 해당한다.
+        본 항목들이 수정되지 않은 상태에서 측정된 NMSE / RSRP / SRS bin 등의
+        하류 지표는 기준값으로 사용해서는 안 된다.
+  \item \stwo{} \ \textbf{중요 수정}: 시스템 견고성, VRAM 점유, 예외 복구,
+        OAI 제어 평면 수렴 과정에 영향을 주는 항목이다. 미수정 시 실험
+        지속 시간 및 재현성이 제한된다.
+  \item \sone{} \ \textbf{일반 수정}: 경계 검사, 호환성, 데드 코드 제거,
+        로그 형식 개선 등이며 실험 결론에는 영향을 주지 않는다.
+\end{itemize}
+
+\subsection{버전 흐름}
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{>{\bfseries}l p{12cm}}
+\toprule
+v4.py & 범용 채널 생성 + IPC ring buffer 프레임워크 \\
+\midrule
+v6.py & 물리 모델링 \& 견고성 \& 성능 \& CUDA Graph 수정 (본문 \#1$\sim$\#26) \\
+\midrule
+v7.py & v6 + 제어 평면 안정 윈도우 + 자동 handoff + P1B 거리 모드 (본문 \#27$\sim$\#29) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{관련 파일}
+\begin{itemize}
+  \item \texttt{DevChannelProxyJIN/vRAN\_Socket/G1C\_MultiUE\_MIMO\_Channel\_Proxy/v4.py}
+        \quad (3164 행)
+  \item \texttt{DevChannelProxyJIN/vRAN\_Socket/G1C\_MultiUE\_MIMO\_Channel\_Proxy/v6.py}
+        \quad (3554 행)
+  \item \texttt{DevChannelProxyJIN/vRAN\_Socket/G1C\_MultiUE\_MIMO\_Channel\_Proxy/v7.py}
+        \quad (3660 행)
+  \item \texttt{verify\_issue\_2.py}: 5 단계 물리 일관성 검증 스크립트 (부록 \ref{sec:verify})
+\end{itemize}
+
+% =====================================================================
+\section{전체 수정 사항 요약}
+\label{sec:summary}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.18}
+\rowcolors{2}{rowgray}{white}
+\begin{longtable}{c c p{8.6cm} c}
+\toprule
+\textbf{번호} & \textbf{분류} & \textbf{수정 내용} & \textbf{심각도} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{번호} & \textbf{분류} & \textbf{수정 내용} & \textbf{심각도} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+1  & 물리 & 반송파 주파수 단위 \texttt{3.5} $\to$ \texttt{3.5e9} Hz 로 보정 & \sthree \\
+2  & 물리 & \texttt{sample\_times} 가 배치 간에 누적 증가하도록 수정 (출력 반복 방지) & \sthree \\
+3  & 물리 & \texttt{velocities} 를 수평면 무작위 방향 + 스칼라 속도로 변경 ($V_z=0$) & \stwo \\
+4  & 물리 & LOS 각도 (aoa/aod/zoa/zod) 를 0 에서 3GPP TR38.901 범위 무작위 샘플링으로 변경 & \stwo \\
+5  & 물리 & \texttt{distance\_3d} 를 1\,m 하드코딩에서 설정 가능한 값으로 변경 & \stwo \\
+6  & 물리 & 에너지 정규화를 배치별 정규화에서 batch-0 글로벌 기준으로 변경 & \sthree \\
+7  & 물리 & \texttt{\_validate\_physics\_params()} 추가, CLI 파싱 후 강제 검증 & \sone \\
+8  & 견고성 & \texttt{batch\_idx} 를 \texttt{generate\_fn()} 성공 직후 증가하도록 변경 & \sone \\
+9  & 견고성 & 메인 루프에서 producer 생존 검사 추가, 사망 시 정상 종료 & \stwo \\
+10 & 견고성 & 예외 재시도에 연속 실패 20 회 상한 도입 & \stwo \\
+11 & 견고성 & Socket 모드에서 \texttt{num\_ues>1} 을 묵시적 브로드캐스트 대신 명시적 거부 & \stwo \\
+12 & 견고성 & \texttt{\_stalled\_ue\_logged} 를 UE 회복 시 해제 & \sone \\
+13 & 견고성 & 시작 시 \texttt{gnb\_ant == gnb\_nx * gnb\_ny} 검증 추가 & \sone \\
+14 & 견고성 & \texttt{random.sample} 인덱스 초과 시 명확한 오류 메시지 출력 & \sone \\
+15 & 성능 & UL superposition 경로에 \texttt{skip\_quant=True} 적용, 불필요한 양자화 생략 & \stwo \\
+16 & 성능 & \texttt{NoiseProducer} dtype/buffer 축소 ($\sim$16$\times$ VRAM 절약) & \stwo \\
+17 & 성능 & \texttt{GTBatchSaver} 비동기 디스크 쓰기 & \stwo \\
+18 & 성능 & \texttt{bypass\_copy} 사전 할당 + 캐시 재사용 & \sone \\
+19 & 성능 & UL \texttt{set\_last\_ul\_rx\_ts} 슬롯당 1 회만 wake & \sone \\
+20 & 성능 & \texttt{IPCRingBuffer} 동기화를 락 외부로 이동 & \sthree \\
+21 & CUDA Graph & \texttt{streamCaptureModeRelaxed} 사용으로 변경 & \sone \\
+22 & CUDA Graph & capture 실패 시 영구 비활성화 대신 5 회 재시도 & \sone \\
+23 & 기타 & PEP 604 \texttt{Tuple|None} $\to$ \texttt{Optional[Tuple[...]]} 호환성 개선 & \sone \\
+24 & 기타 & CPU 모드에서 \texttt{noise\_dBFS} 가 묵시적으로 무시되던 문제 수정 & \sone \\
+25 & 기타 & 사용되지 않는 \texttt{\_ul\_clip\_3d} 제거 & \sone \\
+26 & 기타 & CUDA Graph 내 \texttt{pl\_linear} 의 Python 분기 제거 & \sone \\
+\midrule
+27 & 제어 평면 & attach-stable 윈도우 도입, \texttt{sample\_times} 동결 처리 & \stwo \\
+28 & 제어 평면 & 트리거 파일 기반 auto handoff 메커니즘 추가 & \sone \\
+29 & 물리 & P1B 거리 추정을 옵션화하고 기본값을 고정값으로 변경 & \stwo \\
+\end{longtable}
+\end{center}
+
+% =====================================================================
+\section{물리적 정확성}
+\label{sec:physics}
+
+% ---------------------------------------------------------------------
+\bugitem{1}{반송파 주파수 단위 \texttt{3.5} $\to$ \texttt{3.5e9}}{\sthree}
+
+\textbf{증상.} \vfour{} 의 상수 \texttt{carrier\_frequency} 가 스칼라
+\texttt{3.5} 로 작성되어 단위가 누락되었다. Sionna 의 \texttt{PanelArray}
+및 \texttt{ChannelCoefficientsGeneratorJIN} 은 해당 인자를 Hz 단위로
+기대하므로, \texttt{3.5\,Hz} 로 해석되었을 때 다음과 같은 결과가 발생한다:
+\begin{itemize}
+  \item 파장 $\lambda_0 = c/f = 8.57\times 10^{7}\,\text{m}$
+        (기대값 약 \,$0.0857\,\text{m}$);
+  \item Doppler 항 $\exp(j\,2\pi v \hat{r}\cdot t / \lambda)$ 의 위상 회전량이
+        합리적인 시뮬레이션 시간 내에서 0 에 수렴하여 채널 시변성이 사라진다;
+  \item 안테나 간격을 $\lambda/2$ 로 계산하는 경우 물리적 척도가 9 자릿수
+        차이가 발생한다.
+\end{itemize}
+
+\textbf{\vfour{} 원본 코드.}
+\begin{lstlisting}[caption={v4.py: line 194}]
+# OFDM NR numerology=1
+carrier_frequency = 3.5
+\end{lstlisting}
+
+\textbf{\vseven{} 수정.}
+\begin{lstlisting}[caption={v7.py: line 234}]
+# OFDM NR numerology=1
+carrier_frequency = 3.5e9
+\end{lstlisting}
+
+\textbf{영향 범위.} 본 항목은 \#2 와 결합되어 \vfour{} producer 가 사실상
+정적 realization 만 출력하게 만들었다. 미수정 상태에서 측정된 NMSE 및
+RSRP 는 물리적 의미를 갖지 않는다.
+
+% ---------------------------------------------------------------------
+\bugitem{2}{\texttt{sample\_times} 의 배치 간 누적 증가}{\sthree}
+
+\textbf{증상.} \texttt{\_H\_TTI\_sequential\_fft\_o\_ELW2\_noProfile()}
+은 내부 난수원이 없는 순수 결정적 함수로, 출력은 (topology, sample\_times,
+h\_field, aoa, zoa) 만으로 결정된다. \vfour{} 는 루프 외부에서
+\texttt{sample\_times\_fixed} 를 한 번 생성한 뒤 메인 루프에서 동일한
+인자로 반복 호출하므로, producer 의 전체 수명 동안 완전히 동일한 채널
+realization 만 반복적으로 출력된다.
+
+\textbf{\vfour{} 원본 코드.}
+\begin{lstlisting}[caption={v4.py: lines 1817--1819 (루프 외부에서 정의, 루프 내 불변)}]
+sample_times_fixed = _tf.cast(
+    _tf.range(buffer_symbol_size), gen.rdtype
+) / _tf.constant(params['scs'], gen.rdtype)
+\end{lstlisting}
+
+\textbf{\vseven{} 수정.} \texttt{int64} 베이스로 배치 간 누적 증가를 처리하여,
+배치 카운트가 매우 커진 후에도 부동소수 누적 오차를 회피한다.
+\begin{lstlisting}[caption={v7.py: lines 2088--2092}]
+def _build_sample_times(b_idx):
+    # absolute symbol indices: [b_idx*B, b_idx*B+1, ..., b_idx*B+B-1]
+    start = _tf.constant(b_idx * _bss, dtype=_tf.int64)
+    idx_i64 = start + _tf.range(_bss, dtype=_tf.int64)
+    return _tf.cast(idx_i64, gen.rdtype) / _scs_tf
+\end{lstlisting}
+
+\textbf{\#1 과의 결합.} \#1 과 \#2 는 서로를 가린다: \#2 만 수정해도
+$\lambda \sim 10^{7}\,\text{m}$ 로 인해 Doppler 가 사실상 0 이며, \#1 만
+수정해도 sample\_times 가 변하지 않으므로 출력이 반복된다. 두 항목을
+동시에 수정한 후에야 배치 간 채널 변동이 관측되며, 이때 상대 차이는
+약 93.5\% (부록 \ref{sec:verify} 참조).
+
+% ---------------------------------------------------------------------
+\bugitem{3}{\texttt{velocities} 물리 모델링}{\stwo}
+
+\textbf{증상.} \vfour{} 는 3 개 속도 성분을 각각 독립적으로
+$|\mathcal{N}(\text{Speed}, 0.1)|$ 로 샘플링하므로, 전체 속도 크기는
+$|\boldsymbol{v}| \approx \sqrt{3}\cdot\text{Speed}$ 가 되어 Speed 자체와
+다르다. 또한 \texttt{tf.abs} 로 모든 성분이 1 사분면에 강제되어 방향
+분포가 심각하게 왜곡된다.
+
+\textbf{\vfour{} 원본 코드.}
+\begin{lstlisting}[caption={v4.py: lines 1774--1775}]
+velocities = _tf.abs(_tf.random.normal(
+    shape=[batch_size, N_UE, 3], mean=Speed_local, stddev=0.1, dtype=_tf.float32))
+\end{lstlisting}
+
+\textbf{\vseven{} 수정.} 수평면 방향각 $\phi \sim \mathcal{U}[0, 2\pi)$,
+속도 크기 $|v| = |\mathcal{N}(\text{Speed}, 0.1)|$, 수직 성분 $V_z = 0$ 으로
+변경하였다.
+\begin{lstlisting}[caption={v7.py: lines 2011--2023}]
+_phi = _tf.random.uniform(
+    shape=[batch_size, N_UE], minval=0.0, maxval=2 * float(PI),
+    dtype=_tf.float32)
+_speed_mag = _tf.abs(_tf.random.normal(
+    shape=[batch_size, N_UE], mean=Speed_local, stddev=0.1,
+    dtype=_tf.float32))
+velocities = _tf.stack([
+    _speed_mag * _tf.cos(_phi),                       # Vx
+    _speed_mag * _tf.sin(_phi),                       # Vy
+    _tf.zeros_like(_speed_mag),                       # Vz=0 (planar)
+], axis=-1)
+\end{lstlisting}
+
+% ---------------------------------------------------------------------
+\bugitem{4}{LOS 경로 각도 초기화}{\stwo}
+
+\textbf{증상.} \vfour{} 는 모든 BS-UE 쌍의 LOS azimuth/zenith
+(\texttt{los\_aoa, los\_aod, los\_zoa, los\_zod}) 를 0 으로 초기화하여,
+모든 UE 가 동일한 LOS 방향을 공유함으로써 공간 다양성을 잃는다.
+
+\textbf{\vfour{} 원본 코드.}
+\begin{lstlisting}[caption={v4.py: lines 1776--1779}]
+los_aoa = _tf.zeros([batch_size, N_BS, N_UE])
+los_aod = _tf.zeros([batch_size, N_BS, N_UE])
+los_zoa = _tf.zeros([batch_size, N_BS, N_UE])
+los_zod = _tf.zeros([batch_size, N_BS, N_UE])
+\end{lstlisting}
+
+\textbf{\vseven{} 수정.} 3GPP TR38.901 범위에서 샘플링한다:
+azimuth $\in [0, 2\pi)$, zenith $\in [\pi/3, 2\pi/3]$ (수평면 $\pm 30^{\circ}$).
+\begin{lstlisting}[caption={v7.py: lines 2030--2041}]
+los_aoa = _tf.random.uniform(
+    shape=[batch_size, N_BS, N_UE], minval=0.0, maxval=2 * float(PI),
+    dtype=_tf.float32)
+los_aod = _tf.random.uniform(
+    shape=[batch_size, N_BS, N_UE], minval=0.0, maxval=2 * float(PI),
+    dtype=_tf.float32)
+los_zoa = _tf.random.uniform(
+    shape=[batch_size, N_BS, N_UE],
+    minval=float(PI) / 3, maxval=2 * float(PI) / 3, dtype=_tf.float32)
+los_zod = _tf.random.uniform(
+    shape=[batch_size, N_BS, N_UE],
+    minval=float(PI) / 3, maxval=2 * float(PI) / 3, dtype=_tf.float32)
+\end{lstlisting}
+
+% ---------------------------------------------------------------------
+\bugitem{5}{\texttt{distance\_3d} 1\,m 하드코딩}{\stwo}
+
+\textbf{증상.} \vfour{} 는 모든 BS-UE 거리를 1\,m 로 하드코딩하여 합리적인
+셀룰러 기하 구조에서 벗어나며, 경로 손실 모델이 왜곡된다.
+
+\textbf{\vfour{} 원본 코드.}
+\begin{lstlisting}[caption={v4.py: line 1782}]
+distance_3d = _tf.ones([1, N_BS, N_UE])
+\end{lstlisting}
+
+\textbf{\vsix{} 수정}: P1B 데이터 사용 가능 시 최단 경로 $\tau$ 로부터
+$d \approx \tau \cdot c$ 추정 (하한 1\,m), 그렇지 않으면
+\texttt{--default-distance-m} 설정값 사용. 본 방안은 실제 P1B 데이터에서
+부적절하게 동작하였다 (\#29 참조).
+
+\textbf{\vseven{} 수정}: \#29 참조 (기본값을 100\,m 고정으로 변경,
+$\tau$ 추정은 옵션 모드).
+
+% ---------------------------------------------------------------------
+\bugitem{6}{에너지 정규화로 인한 Rayleigh 전력 변동 손실}{\sthree}
+
+\textbf{증상.} \vfour{} 는 각 배치마다 자체 총 에너지를 계산하고
+정규화하므로, 모든 배치의 총 에너지가 동일하도록 강제된다. 그 결과
+Rayleigh fading 의 전력 변동이 평탄화되고, Doppler 로 유발되는 소규모
+전력 변동까지 함께 제거되어 하류 NMSE 및 RSRP 의 통계적 의미가 상실된다.
+
+\textbf{\vfour{} 원본 코드.}
+\begin{lstlisting}[caption={v4.py: lines 1834--1835}]
+energy = _tf.reduce_sum(_tf.abs(h_c128) ** 2, axis=3, keepdims=True)
+h_norm = h_delay / _tf.cast(_tf.sqrt(energy + 1e-30), h_delay.dtype)
+\end{lstlisting}
+
+\textbf{\vseven{} 수정.} batch 0 에서 글로벌 스칼라 $|H|_{\text{rms}}$ 를
+한 번만 계산하고, 이후 모든 배치는 동일한 상수로 나눈다.
+\begin{lstlisting}[caption={v7.py: lines 2117--2125}]
+_h0 = _generate_unnorm(_build_sample_times(0))
+_ref_energy = _tf.reduce_mean(_tf.abs(_h0) ** 2, keepdims=False)
+_ref_norm = _tf.cast(_tf.sqrt(_ref_energy + 1e-30), _h0.dtype)
+print(f"[v7 ChannelProducer] reference energy normalization: "
+      f"|H|_rms = {float(_tf.abs(_ref_norm)):.4e}")
+
+def _generate_eager(sample_times):
+    h_c128 = _generate_unnorm(sample_times)
+    return h_c128 / _ref_norm   # global, time-invariant scaling
+\end{lstlisting}
+
+부수 효과로, 더 이상 배치별 정규화를 수행하지 않으므로 배치 간 에너지가
+자연스럽게 연속되며, Phase C 검증에서 배치 경계 점프는 약
+$2.6\times 10^{-7}$ (부동소수 정밀도 수준) 으로 측정되었다.
+
+% ---------------------------------------------------------------------
+\bugitem{7}{물리 파라미터 경계 검증}{\sone}
+
+\textbf{증상.} \vfour{} 는 \texttt{carrier\_frequency}, \texttt{scs},
+\texttt{Speed} 를 검증하지 않으므로, 사용자가 비정상 값을 입력해도 묵시적으로
+실행된다.
+
+\textbf{\vseven{} 수정.} \texttt{\_validate\_physics\_params()} 를 추가하여
+CLI 파싱 후 호출하며, \texttt{ValueError} 를 사용한다 (\texttt{python -O}
+환경에서 \texttt{assert} 가 제거되는 것을 방지).
+\begin{lstlisting}[caption={v7.py: lines 256--274}]
+def _validate_physics_params(cf=None, sc=None, sp=None):
+    """Validate physics parameters. Uses module globals if args omitted.
+    Raises ValueError (not assert) so it survives `python -O`."""
+    cf = carrier_frequency if cf is None else cf
+    sc = scs if sc is None else sc
+    sp = Speed if sp is None else sp
+    _wavelength = 3e8 / cf
+    if not (1e8 < cf < 1e12):
+        raise ValueError(
+            f"carrier_frequency={cf} Hz - "
+            f"expected 100 MHz - 1 THz for 5G/sub-THz")
+    if not (1e-4 < _wavelength < 10):
+        raise ValueError(
+            f"wavelength={_wavelength} m - "
+            f"implausible for 5G (expected mm-cm range)")
+    if sc not in (15e3, 30e3, 60e3, 120e3, 240e3):
+        raise ValueError(
+            f"scs={sc} Hz - not a standard NR numerology")
+\end{lstlisting}
+
+% =====================================================================
+\section{견고성}
+\label{sec:robustness}
+
+% ---------------------------------------------------------------------
+\bugitem{8}{\texttt{batch\_idx} 증가 시점}{\sone}
+
+\textbf{증상.} \vfour{} 는 카운터 (\texttt{symbol\_counter}) 를 루프 끝에서
+증가시킨다. 하류 처리 (FFT, ring buffer 쓰기) 가 예외를 발생시키면
+재시도 시 카운터 의미가 모호해진다.
+
+\textbf{\vseven{} 수정.} \texttt{generate\_fn()} 이 성공 반환된 직후
+즉시 \texttt{batch\_idx} 를 증가시키고, 하류 처리와 분리하였다.
+\begin{lstlisting}[caption={v7.py: lines 2199--2202}]
+# v7 #V6-4: increment batch_idx IMMEDIATELY after successful
+# generate_fn() so a downstream exception does not trigger a
+# duplicate batch on retry.
+batch_idx += 1
+\end{lstlisting}
+
+% ---------------------------------------------------------------------
+\bugitem{9}{Producer 생존 검사}{\stwo}
+
+\textbf{증상.} \vfour{} 는 warmup 단계에서만 producer 프로세스 생존을
+검사하고, 메인 루프 진입 후에는 검사하지 않는다. Producer 가 비정상
+종료된 후에도 메인 프로세스는 ring buffer 에서 stale data 를 계속 읽으며,
+오류가 묵시적으로 하류로 전파된다.
+
+\textbf{\vsix/\vseven{} 수정.} 메인 루프에서 1000 회 반복마다
+\texttt{proc.is\_alive()} 를 검사하고, 사망 시 exit code 를 출력하고
+break 한다. 또한 ring buffer 읽기에 타임아웃 보호를 추가하였다.
+
+% ---------------------------------------------------------------------
+\bugitem{10}{예외 재시도 상한}{\stwo}
+
+\textbf{증상.} \vfour{} 는 producer 메인 루프의 \texttt{except Exception}
+이후 \texttt{traceback.print\_exc()} 와 \texttt{time.sleep(1.0)} 만
+수행하며, 상한이 없다. 지속적인 오류는 매초 한 건의 traceback 으로 로그를
+오염시키고 GPU 자원을 점유한다.
+
+\textbf{\vfour{} 원본 코드.}
+\begin{lstlisting}[caption={v4.py: lines 1880--1884}]
+except Exception as e:
+    print(f"[v4 UnifiedChannelProducerProcess] ERROR in generation loop: {e}")
+    import traceback
+    traceback.print_exc()
+    time.sleep(1.0)
+\end{lstlisting}
+
+\textbf{\vseven{} 수정.}
+\begin{lstlisting}[caption={v7.py: lines 2154--2164}]
+except Exception as e:
+    consecutive_errors += 1
+    print(f"[v7 UnifiedChannelProducerProcess] ERROR "
+          f"({consecutive_errors}/{MAX_CONSECUTIVE_ERRORS}): {e}")
+    import traceback
+    traceback.print_exc()
+    if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+        print(f"[v7 UnifiedChannelProducerProcess] Too many "
+              f"consecutive errors - exiting.")
+        break
+    time.sleep(1.0)
+\end{lstlisting}
+1 회 성공 후 \texttt{consecutive\_errors} 가 0 으로 초기화되므로,
+간헐적 오류는 누적되지 않는다.
+
+% ---------------------------------------------------------------------
+\bugitem{11}{Socket 모드 multi-UE 처리}{\stwo}
+
+\textbf{증상.} \vfour{} 는 socket 모드에서 \texttt{num\_ues>1} 인 경우
+동일한 processed signal 을 모든 UE 에 브로드캐스트하므로, 결과가 잘못되지만
+경고가 발생하지 않는다.
+
+\textbf{\vseven{} 수정.} 시작 시 명시적으로 거부:
+\begin{verbatim}
+if num_ues > 1 and mode == "socket":
+    raise ValueError("Socket mode does not support num_ues>1")
+\end{verbatim}
+
+% ---------------------------------------------------------------------
+\bugitem{12}{\texttt{\_stalled\_ue\_logged} 상태 회복}{\sone}
+
+\textbf{증상.} \vfour{} 는 UE 가 한 번 stalled 로 표기되면
+\texttt{\_stalled\_ue\_logged} 에서 절대 제거되지 않으며, UE 가 실제로
+회복되어도 로그도 후속 검사도 발생하지 않는다.
+
+\textbf{\vseven{} 수정.}
+\begin{verbatim}
+_recovered = self._stalled_ue_logged & active_set
+if _recovered:
+    print(f"UE recovered from stall: {sorted(_recovered)}")
+    self._stalled_ue_logged -= _recovered
+\end{verbatim}
+
+% ---------------------------------------------------------------------
+\bugitem{13}{안테나 수 일관성 검증}{\sone}
+
+\textbf{증상.} 사용자가 \texttt{--gnb-ant 4 --gnb-nx 1 --gnb-ny 1} 을
+입력하면 \texttt{PanelArray} 차원 추론에 실패하며, 오류 메시지가 모호하다.
+
+\textbf{\vseven{} 수정.} \texttt{main()} 진입점에서 명시적으로
+\texttt{gnb\_ant == gnb\_nx * gnb\_ny} 를 검증하고, 통과하지 못하면 구체적인
+값과 함께 즉시 오류를 발생시킨다.
+
+% ---------------------------------------------------------------------
+\bugitem{14}{\texttt{random.sample} 경계 검사}{\sone}
+
+\textbf{증상.} \texttt{num\_ues > len(all\_indices)} 일 때 \vfour{} 는
+stdlib \texttt{ValueError} 를 직접 받게 되어, 사용자는 P1B 인덱스 부족이
+원인임을 추적하기 어렵다.
+
+\textbf{\vseven{} 수정.} 사전 검사 후 추적 가능한 오류 발생:
+\begin{verbatim}
+if num_ues > len(all_indices):
+    raise ValueError(
+        f"--num-ues={num_ues} exceeds available RX indices "
+        f"({len(all_indices)}) in {p1b_npz}")
+\end{verbatim}
+
+% =====================================================================
+\section{성능 및 메모리}
+\label{sec:performance}
+
+% ---------------------------------------------------------------------
+\bugitem{15}{UL 경로 \texttt{skip\_quant}}{\stwo}
+
+\textbf{증상.} UL superposition 에서 각 UE 의 \texttt{process\_slot\_ipc()}
+호출 종료 시 실제로 상위로 누적되는 데이터는 복소수 \texttt{gpu\_out} 이지만,
+\vfour{} 는 \texttt{\_ul\_dummy\_out} 에 대한 전체 clip + cast$\to$int16
+쓰기를 수행한다. 그 출력은 즉시 폐기되므로, 한 번의 GPU memcpy + kernel
+호출이 낭비된다.
+
+\textbf{\vseven{} 수정.} \texttt{skip\_quant} 파라미터를 추가하고,
+UL 경로에서는 \texttt{skip\_quant=True} 로 호출한다. 대응되는 CUDA Graph
+도 최종 양자화 분기를 생략한다 (\texttt{\_use\_graph\_this\_call = not skip\_quant}).
+
+% ---------------------------------------------------------------------
+\bugitem{16}{\texttt{NoiseProducer} VRAM 점유}{\stwo}
+
+\textbf{증상.}
+\begin{center}
+\begin{tabular}{l c c c}
+\toprule
+버전 & dtype & BATCH\_SIZE & maxlen \\
+\midrule
+v4 & float64 & 64 & 256 \\
+v7 & float32 & 32 & 64 \\
+\bottomrule
+\end{tabular}
+\end{center}
+v4 설정에서 단일 noise buffer 는 약 480\,MB (\texttt{gnb\_ant=4}) 를
+점유하며, 4 UE $\times$ 2 (DL+UL) 는 4\,GB 에 근접한다.
+
+\textbf{\vseven{} 수정.} dtype 을 float32, BATCH\_SIZE 를 32 로 축소하였다.
+단일 buffer 는 약 15\,MB, 4 UE $\times$ 2 는 약 120\,MB 가 되어
+$\sim 16\times$ VRAM 절약이 가능하다. 노이즈의 물리적 통계는 약 5 bit
+정밀도만 필요하므로 float64 의 52 bit 보다 훨씬 적다. consumer 측의
+\texttt{\_regenerate\_noise} 가 복사 시 float64 로 묵시적 캐스팅하므로
+물리 정밀도 손실은 없다.
+
+\begin{lstlisting}[caption={v7.py: lines 2184--2200}]
+BATCH_SIZE = 32           # was 64; consumer rate is ~1/slot anyway
+NOISE_DTYPE = cp.float32 if GPU_AVAILABLE else np.float32
+
+def __init__(self, buffer, noise_len):
+    super().__init__()
+    self.buffer = buffer
+    self.noise_len = noise_len
+    self.stop_event = threading.Event()
+    self.daemon = True
+
+def run(self):
+    if GPU_AVAILABLE:
+        cp.cuda.Device(0).use()
+    while not self.stop_event.is_set():
+        batch = cp.random.randn(
+            self.BATCH_SIZE, 2, self.noise_len).astype(self.NOISE_DTYPE)
+        self.buffer.put_batch(batch)
+\end{lstlisting}
+
+% ---------------------------------------------------------------------
+\bugitem{17}{\texttt{GTBatchSaver} 비동기 디스크 쓰기}{\stwo}
+
+\textbf{증상.} \vfour{} 메인 루프는 각 저장 시점에 동기적으로
+\texttt{np.savez\_compressed} 를 호출하므로, 압축에 수십 $\sim$ 수백
+밀리초가 소요되는 동안 메인 루프가 멈추고 ring buffer 적체 및 UE drop 이
+발생한다.
+
+\textbf{\vseven{} 수정.} 백그라운드 daemon thread + \texttt{Queue(maxsize=16)}
+방식의 비동기 디스크 쓰기를 적용한다. 큐가 가득 차면 동기 쓰기로 강등되며
+(backpressure, 데이터 손실 없음), \texttt{flush\_all()} 은 먼저
+\texttt{join()} 으로 큐가 비도록 보장한다.
+
+% ---------------------------------------------------------------------
+\bugitem{18}{\texttt{bypass\_copy} 사전 할당}{\sone}
+
+\textbf{증상.} \vfour{} 는 매 bypass copy 호출에서 \texttt{cp.zeros(...)}
+로 GPU 메모리를 새로 할당하므로, 고빈도 호출 시 allocator 부담이 증가한다.
+
+\textbf{\vseven{} 수정.} lazy 할당 + \texttt{(nsamps, dst\_nbAnt)} 키로
+buffer 캐시 재사용. 또한 비대칭 안테나 시나리오에서 \vfour{} 의
+\texttt{dst\_2d[:, min\_ant*2:]} 미초기화 부작용도 수정하였다.
+
+% ---------------------------------------------------------------------
+\bugitem{19}{UL \texttt{set\_last\_ul\_rx\_ts} 통합}{\sone}
+
+\textbf{증상.} bypass mode 에서 \vfour{} 는 각 UE 마다 개별적으로
+\texttt{ipc\_gnb.set\_last\_ul\_rx\_ts} 를 호출하여 매번 한 번의
+\texttt{futex\_wake} 를 트리거하므로, $N$ 개 UE 는 $N$ 회 시스템 호출이
+발생한다.
+
+\textbf{\vseven{} 수정.} \texttt{max\_new\_head} 를 수집한 뒤 루프 외부에서
+1 회만 wake 한다:
+\begin{verbatim}
+if _any_bypass:
+    self.ipc_gnb.set_last_ul_rx_ts(int(_max_new_head - 1))
+\end{verbatim}
+
+% ---------------------------------------------------------------------
+\bugitem{20}{\texttt{IPCRingBuffer} 동기화의 락 외부 이동}{\sthree}
+
+\textbf{증상.} \vfour{} 는 \texttt{with s.not\_full:} 락 내부에서
+\texttt{cp.cuda.Device(0).synchronize()} 를 호출한다. CUDA stream 동기화
+시간은 현재 kernel 큐 깊이에 따라 결정되며 (밀리초 수준),
+이 시간 동안 동일한 락을 대기하는 모든 프로세스가 차단된다. 다중 UE
+환경에서 전체 pipeline 이 직렬화되는 결과를 낳는다.
+
+\textbf{\vseven{} 수정.} 락 내부에서는 인덱스 갱신과 \texttt{notify\_all}
+만 수행하고, \texttt{Device.synchronize()} 는 락 외부로 이동한다. 동기화
+완료 후 consumer 와 producer 사이의 race condition 을 방지하기 위해
+re-notify 한다.
+\begin{verbatim}
+with s.not_full:
+    # write + index update + notify
+    ...
+s.not_empty.notify_all()
+cp.cuda.Device(0).synchronize()    # outside the lock
+with s.not_empty:
+    s.not_empty.notify_all()        # re-notify
+\end{verbatim}
+
+% =====================================================================
+\section{CUDA Graph}
+\label{sec:cudagraph}
+
+% ---------------------------------------------------------------------
+\bugitem{21}{Capture 모드: Relaxed}{\sone}
+
+\textbf{증상.} \vfour{} 는 \texttt{stream.begin\_capture()} 호출 시 기본적으로
+Global capture mode 를 사용하므로, 동시에 실행 중인 다른 stream
+(Sionna XLA, NoiseProducer) 과 충돌이 발생하여 capture 가 간헐적으로 실패한다.
+
+\textbf{\vseven{} 수정.}
+\begin{verbatim}
+try:
+    mode = cp.cuda.runtime.streamCaptureModeRelaxed
+except AttributeError:
+    mode = 2  # CUDA runtime magic number
+stream.begin_capture(mode=mode)
+\end{verbatim}
+
+% ---------------------------------------------------------------------
+\bugitem{22}{Capture 실패의 회복 가능성}{\sone}
+
+\textbf{증상.} \vfour{} 는 최초 capture 실패 시 즉시
+\texttt{self.use\_cuda\_graph = False} 로 설정하여, 이후 조건이 회복되어도
+전체 수명 동안 다시 시도하지 않는다. eager mode 로 강등된 후 단일 슬롯
+처리 시간이 크게 증가한다.
+
+\textbf{\vseven{} 수정.} \texttt{\_capture\_failure\_count} 를 유지하며
+최대 5 회 재시도한다. graph 경로를 직접 비활성화하지 않고, 다음 슬롯에서
+다시 capture 를 시도한다.
+
+% =====================================================================
+\section{기타}
+\label{sec:misc}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.30}
+\begin{tabular}{c p{8.4cm} c}
+\toprule
+\textbf{번호} & \textbf{수정 내용} & \textbf{심각도} \\
+\midrule
+23 & PEP 604 \texttt{Tuple[...]|None} (Py3.10+) 을
+     \texttt{Optional[Tuple[...]]} (Py3.8 호환) 로 변경 & \sone \\
+24 & CPU 모드 (\texttt{GPU\_AVAILABLE=False}) 에서 \texttt{noise\_dBFS}
+     가 묵시적으로 무시되던 문제를 Python \texttt{float} 로
+     \texttt{noise\_std\_abs} 를 계산하도록 수정 & \sone \\
+25 & 할당 후 사용되지 않던 \texttt{self.\_ul\_clip\_3d = cp.zeros(...)} 제거 & \sone \\
+26 & \texttt{if pl\_linear != 1.0: gpu\_out *= pl\_linear} 를
+     무조건 \texttt{cp.float64(pl\_linear)} 곱셈으로 변경하여
+     CUDA Graph capture 시 Python 분기 발생을 방지 & \sone \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% =====================================================================
+\section{제어 평면 안정성 (v6 $\to$ v7)}
+\label{sec:control}
+
+v6 가 물리 모델링을 보정한 이후, OAI 의 attach 단계에서 새로운 불안정 현상이
+관측되었다. 아래 표 참조.
+
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{l c c}
+\toprule
+\textbf{설정} & \textbf{결과} & \textbf{결론} \\
+\midrule
+\texttt{UE\_SPEED=3}, stable 45s   & PARTIAL, srs=0   & 동적 채널 진입이 너무 빨라 attach/SRS 불안정 \\
+\texttt{UE\_SPEED=0}, stable 300s  & OK, srs=1        & 충분한 안정 윈도우에서 SRS 설정 완료 \\
+\texttt{UE\_SPEED=3}, stable 300s  & OK, srs=1        & 문제는 \texttt{Speed=3} 자체와 무관 \\
+\texttt{UE\_SPEED=3}, auto trigger & OK, srs=1$\sim$2 & 이벤트 트리거가 고정 대기를 대체 가능 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ---------------------------------------------------------------------
+\bugitem{27}{Attach-Stable Window}{\stwo}
+
+\textbf{증상.} \vsix{} 는 시작 직후 동적 \texttt{sample\_times} 로 진입한다.
+RRC/NAS/SRS 설정 단계가 완료되지 않은 상태에서 UL Msg3 수신이 불안정하여
+RRCReconfiguration 이 트리거되지 못하고, periodic SRS 는
+RRCReconfigurationComplete 에 의존하므로 활성화되지 않아 \texttt{srs=0} 으로
+나타난다.
+
+\textbf{\vsix{} 동작.}
+\begin{lstlisting}[caption={v6.py: lines 2119--2120 (시작과 동시에 동적)}]
+sample_times_now = _build_sample_times(batch_idx)
+h_c128_norm = generate_fn(sample_times_now)
+\end{lstlisting}
+
+\textbf{\vseven{} 수정.} attach-stable 윈도우를 도입하여 해당 기간 동안
+\texttt{sample\_times} 를 batch 0 에 동결한다. 트리거 후 0 부터 다시
+시간을 측정하여 inter-batch 의 큰 위상 점프를 방지한다.
+\begin{lstlisting}[caption={v7.py: lines 2186--2196}]
+if attach_stable_active:
+    # Freeze inter-batch time during attach so RRC/NAS/SRS setup
+    # sees a quasi-static channel, then restart dynamic time at 0.
+    sample_times_now = _build_sample_times(0)
+else:
+    if (attach_stable_batches > 0 and
+            batch_idx == attach_stable_batches and
+            not attach_stable_handoff_logged):
+        print("[v7 AttachStable] dynamic channel handoff")
+    dyn_batch_idx = batch_idx - dynamic_start_batch
+    sample_times_now = _build_sample_times(dyn_batch_idx)
+\end{lstlisting}
+
+% ---------------------------------------------------------------------
+\bugitem{28}{Auto Handoff}{\sone}
+
+\textbf{배경.} 고정 시간 안정 윈도우는 시나리오에 민감하다: 짧으면 attach
+실패, 길면 실험 처리량 저하.
+
+\textbf{\vseven{} 수정.} \texttt{launch\_all\_v7.sh} 가 백그라운드에서
+\texttt{gnb.log} 를 모니터링하여 \texttt{Received RRCReconfigurationComplete}
+를 감지한 후 \texttt{ATTACH\_STABLE\_POST\_DELAY=15s} 를 대기하고,
+트리거 파일 \texttt{/tmp/oai\_gpu\_ipc/v7\_dynamic\_enable} 을 작성한다.
+producer 는 10 batch 마다 해당 파일의 존재 여부를 확인한다.
+\begin{lstlisting}[caption={v7.py: lines 2170--2184}]
+if attach_stable_active:
+    if (attach_stable_mode == "auto" and attach_stable_trigger_file and
+            (batch_idx % 10 == 0) and
+            _os.path.exists(attach_stable_trigger_file)):
+        attach_stable_active = False
+        dynamic_start_batch = batch_idx
+        attach_stable_handoff_logged = True
+        print("[v7 AttachStable] dynamic channel handoff "
+              f"triggered by file: {attach_stable_trigger_file}")
+    elif batch_idx >= attach_stable_batches:
+        attach_stable_active = False
+        dynamic_start_batch = batch_idx
+        attach_stable_handoff_logged = True
+        print("[v7 AttachStable] dynamic channel handoff "
+              f"after max stable window ({attach_stable_sec:.1f}s)")
+\end{lstlisting}
+\texttt{--attach-stable-sec=300} 은 동시에 fallback ceiling 으로 동작하며
+(트리거 파일이 나타나지 않을 경우 강제 전환).
+
+% ---------------------------------------------------------------------
+\bugitem{29}{P1B 거리 추정 모드}{\stwo}
+
+\textbf{배경.} \vsix{} 는 P1B 데이터 사용 가능 시 강제로
+$d \approx \tau_{\min} \cdot c$ 로 BS-UE 거리를 추정하며, 하한은 1\,m 이다.
+
+\textbf{증상.} P1B 데이터의 \texttt{tau\_rays} 는 dump 흐름에서 일반적으로
+\textit{상대 지연} 형식으로 저장되어 있으며 (첫 경로 또는 frame boundary
+기준), BS-UE 사이의 절대 전파 지연이 아니다. 실제 데이터에서
+$\tau_{\min}$ 은 sub-ns 수준인 경우가 많아
+$c \cdot \tau_{\min} < 1\,\text{m}$ 이 되며, 모두
+\texttt{tf.maximum(..., 1.0)} 에 의해 1\,m 로 절단되어 모든 BS-UE 쌍의
+거리가 동시에 1\,m 로 붕괴한다. 이러한 기하 구조에서:
+\begin{itemize}
+  \item 경로 손실이 너무 작아 수신 전력이 OAI gNB 의 AGC 동적 범위를 초과한다;
+  \item TA 추정이 0 에 근접하여 합리적인 셀룰러 시나리오에서 벗어난다;
+  \item RSRP 측정이 saturate 된다.
+\end{itemize}
+이는 attach 단계 불안정 및 \texttt{srs=0} 으로 이어진다.
+
+\textbf{\vsix{} 동작.}
+\begin{lstlisting}[caption={v6.py: lines 2004--2017}]
+_default_d = float(cfg.get('default_distance_m', 100.0))
+if 'ray_data_stacked' in cfg or 'ray_data' in cfg:
+    # Use earliest tap delay across paths to estimate distance
+    _tau_first = _tf.reduce_min(tau_rays, axis=-1)
+    _tau_first = _tf.squeeze(_tau_first, axis=-1)
+    distance_3d = _tau_first * _tf.constant(SPEED_OF_LIGHT, _tau_first.dtype)
+    distance_3d = _tf.maximum(distance_3d, 1.0)                 # floor at 1m
+else:
+    distance_3d = _tf.ones([1, N_BS, N_UE]) * _default_d
+\end{lstlisting}
+
+\textbf{\vseven{} 수정.} \texttt{--p1b-distance-mode \{default, tau\}}
+옵션을 도입하고, 기본값을 \texttt{default} (\texttt{--default-distance-m=100}m
+사용) 로 설정한다. $\tau$ 추정은 명시적으로 요청한 경우에만 사용된다.
+이 변경은 \textit{기하 거리} 와 \textit{PDP 내부 상대 지연} 두 개념을
+분리하여, P1B 데이터 형식 가정이 attach 경로 손실까지 전파되는 것을
+방지한다.
+
+\begin{lstlisting}[caption={v7.py: lines 2051--2070}]
+_default_d = float(cfg.get('default_distance_m', 100.0))
+_p1b_distance_mode = str(cfg.get('p1b_distance_mode', 'default')).lower()
+_has_p1b = 'ray_data_stacked' in cfg or 'ray_data' in cfg
+if _has_p1b and _p1b_distance_mode == 'tau':
+    _tau_first = _tf.reduce_min(tau_rays, axis=-1)
+    _tau_first = _tf.squeeze(_tau_first, axis=-1)
+    distance_3d = _tau_first * _tf.constant(SPEED_OF_LIGHT, _tau_first.dtype)
+    distance_3d = _tf.maximum(distance_3d, 1.0)
+    print(f"[v7 ChannelProducer] distance_3d derived from P1B tau, "
+          f"range=[{float(_tf.reduce_min(distance_3d))}, "
+          f"{float(_tf.reduce_max(distance_3d))}] m")
+else:
+    distance_3d = _tf.ones([1, N_BS, N_UE]) * _default_d
+    if _has_p1b:
+        print(f"[v7 ChannelProducer] distance_3d=fixed {_default_d} m "
+              f"(P1B distance mode={_p1b_distance_mode})")
+    else:
+        print(f"[v7 ChannelProducer] distance_3d=fallback {_default_d} m "
+              f"(no P1B; configure via --default-distance-m)")
+\end{lstlisting}
+
+\textbf{물리적 영향.} 본 PDP 기반 채널 모델에서 \texttt{distance\_3d} 는
+대규모 경로 손실에만 작용하며, 소규모 fading (PDP, Doppler, angular
+spread) 의 계산에는 관여하지 않는다. 후자는 P1B 의 ray data 로 완전히
+결정된다. 따라서 100\,m 고정값은 PDP 형상 왜곡을 유발하지 않으며,
+합리적인 path-loss 척도만 회복시킨다.
+
+% =====================================================================
+\section{검증}
+\label{sec:verify}
+
+\subsection{5 단계 물리 일관성 테스트 (\texttt{verify\_issue\_2.py})}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{c p{6.6cm} l}
+\toprule
+\textbf{Phase} & \textbf{테스트 내용} & \textbf{결과} \\
+\midrule
+A          & 고정 \texttt{sample\_times} 로 producer 2 회 호출
+           & \texttt{identical=True} (\#2 확인) \\
+B (3.5)    & 증가하는 \texttt{sample\_times}, \texttt{cf=3.5} 유지
+           & \texttt{identical=True} (\#1 확인) \\
+B (3.5e9)  & 증가하는 \texttt{sample\_times}, \texttt{cf=3.5e9} 수정
+           & relative $\Delta=93.5\%$, 채널 정상 변동 \\
+C          & 배치 경계 연속성
+           & 연속 $2.6\times10^{-7}$ vs 리셋 $1.6\times10^{-5}$ ($61.6\times$) \\
+D          & \texttt{Speed=0} sanity check
+           & \texttt{identical=True}, Doppler 가 유일한 시변 원인 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{NMSE / 데이터 가치 초기 결론 (\vseven{}, SNR=10\,dB, $UE\_SPEED=3$)}
+
+짧은 윈도우에서 데이터가 유효하며, 긴 윈도우에서는 attach $\to$ 동적 전환
+경계를 가로지른 후 붕괴한다.
+
+\begin{center}
+\renewcommand{\arraystretch}{1.20}
+\begin{tabular}{c c c c}
+\toprule
+$N$ & NMSE (dB) & RSRP err (dB) & PDP corr \\
+\midrule
+10  & $-6.35$  & 0.90  & 0.9999 \\
+15  & $-7.25$  & 0.75  & 0.9997 \\
+20  & $-6.94$  & 0.80  & 0.9994 \\
+30  & $-6.83$  & 0.82  & 0.9998 \\
+100 & $+14.99$ & 15.13 & 0.2884 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+짧은 윈도우 \texttt{--fixed-n 15} 를 SNR sweep 시작점으로 권장하며,
+기본값 $N=100$ 을 현재 \vseven{} 동적 링크의 대표 NMSE 로 사용해서는
+안 된다.
+
+% =====================================================================
+\section{향후 과제}
+\label{sec:todo}
+
+\begin{itemize}
+  \item Auto handoff 후에도 \texttt{No SRS signal},
+        \texttt{Invalid timing advance offset}, \texttt{UL Failure} 가
+        관측되며, 이는 동적 전환 후 링크가 완전히 안정되지 않았음을
+        시사한다. \texttt{ATTACH\_STABLE\_POST\_DELAY=15/30},
+        \texttt{ATTACH\_STABLE\_TRIGGER=rrc\_reconfig/srs} 의 안정성
+        비교 실험을 계획한다.
+  \item ChannelProducer 에서 ring buffer full / dropped 가 여전히
+        관측되며, UL 제어 평면 및 긴 윈도우 NMSE 에 영향을 줄 가능성이
+        있다.
+  \item \texttt{IPCRingBuffer wrap-around view vs copy} (v4 issue \#11)
+        은 미수정 상태이며, 현재 read-only 시나리오에서는 위험도가 낮다.
+  \item \texttt{tf.experimental.dlpack} 은 deprecated 이며, TF 업그레이드
+        후 일괄 마이그레이션 예정이다.
+  \item 전체 SNR sweep 전에 \texttt{--fixed-n 15} 를 고정하고, N-axis
+        곡선을 함께 보존하여 각 SNR 지점의 유효 윈도우를 판단할 것을
+        권장한다.
+\end{itemize}
+
+\end{document}

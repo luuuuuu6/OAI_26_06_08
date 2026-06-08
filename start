@@ -1,0 +1,55 @@
+cd /home/dclserver78/OAI_luuuuuu/DevChannelProxyJIN/vRAN_Socket/G1C_MultiUE_MIMO_Channel_Proxy && \
+sudo NR_DIGITAL_AGC_ENABLED=0 \
+bash launch_all_luuuuuu.sh -v v4 -m gpu-ipc -ga 2 1 -ua 2 1 -n 1 -gpu 1 \
+-p1b ../P1B_Valid_Results/Area1_7.5GHz_Rays_Valid_RXs.npz -rx 98 -snr 10
+
+
+
+
+watch -n 10 'LATEST=$(ls -td ~/OAI_luuuuuu/DevChannelProxyJIN/logs/*/ | head -1); echo "=== $LATEST ==="; echo "SRS bins: $(ls $LATEST/srs_matrix_gNB_*.bin 2>/dev/null | wc -l)"; echo "GT seqs: $(ls $LATEST/sionna_gt/gt_batch_ue0_seq*.npz 2>/dev/null | wc -l)"; grep -E "Captured|Written|Dropped" $LATEST/gnb.log 2>/dev/null | tail -3'
+
+
+
+
+##
+
+echo "--- A: host 进程 ---"
+ps -ef | grep -E "nr-softmodem|nr-uesoftmodem" | grep -v grep && echo "(脏)" || echo "(干净)"
+
+echo "--- B: 容器进程 ---"
+sudo docker exec sionna-proxy ps -ef | grep -E "v[0-9]\.py|multiprocessing" | grep -v grep && echo "(脏)" || echo "(干净)"
+
+echo "--- C: /tmp shm ---"
+[ -z "$(sudo ls /tmp/oai_gpu_ipc/ 2>/dev/null)" ] && echo "(干净)" || sudo ls /tmp/oai_gpu_ipc/
+
+##
+
+
+
+
+
+
+sudo pkill -9 -f nr-softmodem 2>/dev/null; sudo pkill -9 -f nr-uesoftmodem 2>/dev/null; sudo docker exec sionna-proxy pkill -9 -f "v[0-9]\.py" 2>/dev/null; sudo docker exec sionna-proxy pkill -9 -f multiprocessing 2>/dev/null; sudo rm -rf /tmp/oai_gpu_ipc/*; sleep 3; echo "✓ 清完了"
+
+
+
+
+watch -n 3 'L=$(ls -td /home/dclcom57/OAI_luuuuuu/DevChannelProxyJIN/logs/d0_*/ 2>/dev/null | head -1); L=${L%/}; W=$(readlink -f /home/dclcom57/OAI_luuuuuu/DevChannelProxyJIN/logs/latest 2>/dev/null); echo "$(date +%H:%M:%S)  D0=$(basename $L)  Active=$(basename $W)"; for A in legacy passthru oracle; do B=$(ls $L/$A/snr_20dB/srs_matrix_*.bin 2>/dev/null|wc -l); G=$(ls $L/$A/snr_20dB/sionna_gt/*.npz 2>/dev/null|wc -l); printf "  %-9s bin=%-3s gt=%-3s\n" "$A" "$B" "$G"; done; echo; grep -E "Captured.*frames|Written.*frames|Dropped.*frames" $W/gnb.log 2>/dev/null | tail -3'
+
+
+
+
+
+
+
+
+sudo SRS_ESTIMATOR=mmse2d \
+     SRS_2D_METHOD=kalman \
+     SRS_2D_DEBUG=1 \
+     UL_PRE_GAIN=4.0 \
+     ONLY_SNR="20" \
+     MAX_FRAMES=200 \
+     CHANNEL_SEED=42 \
+     bash run_q4_snr_sweep_v9.sh
+
+sudo pkill -9 -f nr-softmodem; sudo pkill -9 -f nr-uesoftmodem; sleep 2; pgrep -af "nr-softmodem|nr-uesoftmodem" || echo ALL_CLEAN

@@ -1,0 +1,37 @@
+{
+  "verdict": "PASS",
+  "epsilon": 0.14,
+  "fit": {
+    "a": 0.1437,
+    "b": 0.4493
+  },
+  "results": [
+    {
+      "speed_kmh": 3,
+      "oracle_mse": 0.03750660933492088,
+      "oracle_alpha_opt": 0.447720223008213,
+      "adaptive_mse": 0.03792436406040857,
+      "ratio": 1.011138162923694,
+      "alpha_converged": 0.48851052162311265,
+      "passed": true,
+      "deployment_relevant": true
+    },
+    {
+      "speed_kmh": 30,
+      "oracle_mse": 0.08505581708325047,
+      "oracle_alpha_opt": 0.8568127214899482,
+      "adaptive_mse": 0.08600499163606648,
+      "ratio": 1.0111594313636065,
+      "alpha_converged": 0.8208480342798259,
+      "passed": true,
+      "deployment_relevant": false
+    }
+  ],
+  "params": {
+    "snr_dB": 10,
+    "n_sc": 1248,
+    "n_frames": 2000,
+    "n_trials": 20,
+    "burn_in": 100
+  }
+}

@@ -1,0 +1,891 @@
+% !TEX program = xelatex
+% =====================================================================
+% Channel Proxy v4 -> v6 -> v7 修订记录
+% IMPORTANT: 必须用 XeLaTeX 编译 (Overleaf: Menu -> Compiler -> XeLaTeX)
+% =====================================================================
+\documentclass[11pt,a4paper,UTF8,fontset=fandol]{ctexart}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{listings}
+\usepackage[table]{xcolor}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{caption}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black!50!blue,
+  urlcolor=blue!60!black,
+  citecolor=black,
+}
+
+% --------------- code style ---------------
+\definecolor{codegreen}{rgb}{0.20,0.55,0.20}
+\definecolor{codeblue}{rgb}{0.10,0.20,0.65}
+\definecolor{codered}{rgb}{0.75,0.10,0.10}
+\definecolor{codebg}{rgb}{0.975,0.975,0.975}
+\definecolor{starcolor}{rgb}{0.92,0.50,0.05}
+\definecolor{rowblue}{rgb}{0.92,0.95,1.00}
+\definecolor{rowgray}{rgb}{0.96,0.96,0.96}
+
+\lstdefinestyle{pystyle}{
+    backgroundcolor=\color{codebg},
+    commentstyle=\color{codegreen}\itshape,
+    keywordstyle=\color{codeblue}\bfseries,
+    stringstyle=\color{codered},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numberstyle=\tiny\color{black!50},
+    numbersep=6pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    language=Python,
+    frame=single,
+    framerule=0.4pt,
+    rulecolor=\color{black!30},
+    aboveskip=6pt,
+    belowskip=6pt,
+}
+\lstset{style=pystyle}
+
+\renewcommand{\lstlistingname}{代码}
+
+% --------------- star severity ---------------
+\newcommand{\sone}{\textcolor{starcolor}{$\bigstar$}}
+\newcommand{\stwo}{\textcolor{starcolor}{$\bigstar\bigstar$}}
+\newcommand{\sthree}{\textcolor{starcolor}{$\bigstar\bigstar\bigstar$}}
+
+\newcommand{\vfour}{\texttt{v4.py}}
+\newcommand{\vsix}{\texttt{v6.py}}
+\newcommand{\vseven}{\texttt{v7.py}}
+
+% --------------- bug header ---------------
+\newcommand{\bugitem}[3]{%
+  \subsection{[\##1] #2 \hfill #3}%
+  \vspace{-0.5em}%
+}
+
+% --------------- title ---------------
+\titleformat{\section}
+  {\normalfont\Large\bfseries}{\thesection.}{0.6em}{}
+\titleformat{\subsection}
+  {\normalfont\large\bfseries}{\thesubsection}{0.6em}{}
+
+\setlist[itemize]{leftmargin=1.4em,topsep=2pt,itemsep=2pt}
+
+\title{\textbf{G1C Multi-UE MIMO Channel Proxy} \\[0.4em]
+       \large 修订记录: v4 $\to$ v6 $\to$ v7}
+\author{}
+\date{2026-05-08}
+
+% =====================================================================
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+本文档汇总 \vfour{} $\to$ \vsix{} $\to$ \vseven{} 的全部代码修订, 共 29 条.
+v6 集中处理 v4 中的信道生成物理建模与系统鲁棒性问题; v7 在 v6 基础上针对 OAI
+attach 阶段引入控制面稳定机制并修正 P1B 距离推导. 每条改动按影响范围标注严重
+程度: \sthree{} 影响信道输出物理正确性或多 UE 场景下的并发吞吐;
+\stwo{} 影响系统鲁棒性, 资源占用或控制面稳定性; \sone{} 属于代码风格,
+兼容性或边界情况. 每条改动给出 \vfour{} 与 \vseven{} 中对应位置的代码片段以便核验.
+\end{abstract}
+
+\tableofcontents
+\vspace{1em}
+
+% =====================================================================
+\section{星级说明与版本演进}
+\label{sec:overview}
+
+\subsection{星级定义}
+\begin{itemize}
+  \item \sthree{} \ \textbf{核心修订}: 涉及信道生成的物理建模数学错误,
+        或在多 UE 场景下决定整体吞吐的并发瓶颈. 该类问题不修复时, 下游性能
+        指标 (NMSE / RSRP / SRS bin) 不应作为基线参考.
+  \item \stwo{} \ \textbf{重要修订}: 影响系统鲁棒性, 显存占用,
+        异常恢复, 或 OAI 控制面收敛过程. 不修复会限制实验时长或重现性.
+  \item \sone{} \ \textbf{常规修订}: 边界检查, 兼容性, 死代码清理,
+        日志格式. 不影响实验结论.
+\end{itemize}
+
+\subsection{版本演进示意}
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{>{\bfseries}l p{12cm}}
+\toprule
+v4.py & 通用通道生成 + IPC ring buffer 框架 \\
+\midrule
+v6.py & 物理建模 \& 鲁棒性 \& 性能 \& CUDA Graph 修订 (本文 \#1$\sim$\#26) \\
+\midrule
+v7.py & v6 + 控制面稳定窗口 + 自动 handoff + P1B 距离模式 (本文 \#27$\sim$\#29) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{涉及文件}
+\begin{itemize}
+  \item \texttt{DevChannelProxyJIN/vRAN\_Socket/G1C\_MultiUE\_MIMO\_Channel\_Proxy/v4.py}
+        \quad (3164 行)
+  \item \texttt{DevChannelProxyJIN/vRAN\_Socket/G1C\_MultiUE\_MIMO\_Channel\_Proxy/v6.py}
+        \quad (3554 行)
+  \item \texttt{DevChannelProxyJIN/vRAN\_Socket/G1C\_MultiUE\_MIMO\_Channel\_Proxy/v7.py}
+        \quad (3660 行)
+  \item \texttt{verify\_issue\_2.py}: 5 阶段物理一致性验证脚本 (附录 \ref{sec:verify})
+\end{itemize}
+
+% =====================================================================
+\section{修订总览表}
+\label{sec:summary}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.18}
+\rowcolors{2}{rowgray}{white}
+\begin{longtable}{c c p{8.6cm} c}
+\toprule
+\textbf{编号} & \textbf{类别} & \textbf{修订内容} & \textbf{严重度} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{编号} & \textbf{类别} & \textbf{修订内容} & \textbf{严重度} \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+
+1  & 物理 & 载频单位由 \texttt{3.5} 修正为 \texttt{3.5e9} Hz                 & \sthree \\
+2  & 物理 & \texttt{sample\_times} 跨 batch 累积递增, 避免输出重复 realization & \sthree \\
+3  & 物理 & \texttt{velocities} 改为水平面随机方向 + 标量速度模长 ($V_z=0$)    & \stwo   \\
+4  & 物理 & LOS 角度 (aoa/aod/zoa/zod) 由全零改为 3GPP TR38.901 范围内随机    & \stwo   \\
+5  & 物理 & \texttt{distance\_3d} 由硬编码 1\,m 改为可配置                     & \stwo   \\
+6  & 物理 & 能量归一化由 per-batch 改为 batch-0 全局基准                       & \sthree \\
+7  & 物理 & 新增 \texttt{\_validate\_physics\_params()} 在 CLI 解析后强校验    & \sone   \\
+8  & 鲁棒 & \texttt{batch\_idx} 在 \texttt{generate\_fn()} 成功后立即递增      & \sone   \\
+9  & 鲁棒 & 主循环增加 producer 存活检查, 死亡时 clean shutdown                & \stwo   \\
+10 & 鲁棒 & 异常重试加 20 次连续失败上限                                       & \stwo   \\
+11 & 鲁棒 & Socket 模式拒绝 \texttt{num\_ues>1} 而非静默广播                   & \stwo   \\
+12 & 鲁棒 & \texttt{\_stalled\_ue\_logged} 在 UE 恢复时清除                    & \sone   \\
+13 & 鲁棒 & 启动时校验 \texttt{gnb\_ant == gnb\_nx * gnb\_ny}                  & \sone   \\
+14 & 鲁棒 & \texttt{random.sample} 越界给出明确错误信息                        & \sone   \\
+15 & 性能 & UL superposition 路径 \texttt{skip\_quant=True} 跳过冗余量化       & \stwo   \\
+16 & 性能 & \texttt{NoiseProducer} dtype/buffer 缩减 ($\sim 16\times$ VRAM)    & \stwo   \\
+17 & 性能 & \texttt{GTBatchSaver} 异步写盘                                     & \stwo   \\
+18 & 性能 & \texttt{bypass\_copy} 预分配 + 缓存复用                            & \sone   \\
+19 & 性能 & UL \texttt{set\_last\_ul\_rx\_ts} 每 slot 仅 wake 一次             & \sone   \\
+20 & 性能 & \texttt{IPCRingBuffer} 同步操作移出锁外                            & \sthree \\
+21 & CUDA Graph & 改用 \texttt{streamCaptureModeRelaxed}                       & \sone   \\
+22 & CUDA Graph & capture 失败可恢复 (5 次重试) 而非永久禁用                   & \sone   \\
+23 & 杂项 & PEP 604 \texttt{Tuple|None} 改为 \texttt{Optional[Tuple[...]]}    & \sone   \\
+24 & 杂项 & CPU 模式下 \texttt{noise\_dBFS} 不再静默丢失                       & \sone   \\
+25 & 杂项 & 移除未使用的 \texttt{\_ul\_clip\_3d}                               & \sone   \\
+26 & 杂项 & CUDA Graph 中 \texttt{pl\_linear} 去除 Python 分支                 & \sone   \\
+\midrule
+27 & 控制面 & 新增 attach-stable 时间窗冻结 \texttt{sample\_times}              & \stwo   \\
+28 & 控制面 & 新增基于触发文件的 auto handoff 机制                              & \sone   \\
+29 & 物理 & P1B 距离改为可选模式, 默认固定值代替 $\tau$ 推导                   & \stwo   \\
+\end{longtable}
+\end{center}
+
+% =====================================================================
+\section{物理正确性}
+\label{sec:physics}
+
+% ---------------------------------------------------------------------
+\bugitem{1}{载频单位 \texttt{3.5} $\to$ \texttt{3.5e9}}{\sthree}
+
+\textbf{现象.} \vfour{} 中载频常量 \texttt{carrier\_frequency} 写为标量
+\texttt{3.5}, 单位语义缺失. Sionna 的 \texttt{PanelArray} 与
+\texttt{ChannelCoefficientsGeneratorJIN} 期望该参数以 Hz 为单位,
+被解释为 \texttt{3.5\,Hz} 时:
+\begin{itemize}
+  \item 波长 $\lambda_0 = c/f = 8.57\times 10^{7}\,\text{m}$
+        (期望约 \,$0.0857\,\text{m}$);
+  \item Doppler 项 $\exp(j\,2\pi v \hat{r}\cdot t / \lambda)$ 在合理仿真时长内
+        相位旋转量趋于零, 信道时变性消失;
+  \item 天线间距按 $\lambda/2$ 计算时, 物理尺度差 9 个数量级.
+\end{itemize}
+
+\textbf{\vfour{} 原始代码.}
+\begin{lstlisting}[caption={v4.py: line 194}]
+# OFDM NR numerology=1
+carrier_frequency = 3.5
+\end{lstlisting}
+
+\textbf{\vseven{} 修订.}
+\begin{lstlisting}[caption={v7.py: line 234}]
+# OFDM NR numerology=1
+carrier_frequency = 3.5e9
+\end{lstlisting}
+
+\textbf{影响范围.} 该项与 \#2 协同导致 \vfour{} producer 输出的信道实质上为
+静态 realization. 不修复时, 下游 NMSE 与 RSRP 测量不具有物理意义.
+
+% ---------------------------------------------------------------------
+\bugitem{2}{\texttt{sample\_times} 跨 batch 累积递增}{\sthree}
+
+\textbf{现象.} \texttt{\_H\_TTI\_sequential\_fft\_o\_ELW2\_noProfile()}
+是无内部随机源的纯确定性函数, 输出仅由 (topology, sample\_times, h\_field, aoa, zoa)
+决定. \vfour{} 在循环外构造一次 \texttt{sample\_times\_fixed} 后, 主循环每次以
+相同入参调用, 因此 producer 在整个生命周期内输出完全相同的一份 channel realization.
+
+\textbf{\vfour{} 原始代码.}
+\begin{lstlisting}[caption={v4.py: lines 1817--1819 (定义于循环外, 循环内不变)}]
+sample_times_fixed = _tf.cast(
+    _tf.range(buffer_symbol_size), gen.rdtype
+) / _tf.constant(params['scs'], gen.rdtype)
+\end{lstlisting}
+
+\textbf{\vseven{} 修订.} 使用 \texttt{int64} 基底跨 batch 递增,
+避免 batch 计数过大后浮点累加丢精度.
+\begin{lstlisting}[caption={v7.py: lines 2088--2092}]
+def _build_sample_times(b_idx):
+    # absolute symbol indices: [b_idx*B, b_idx*B+1, ..., b_idx*B+B-1]
+    start = _tf.constant(b_idx * _bss, dtype=_tf.int64)
+    idx_i64 = start + _tf.range(_bss, dtype=_tf.int64)
+    return _tf.cast(idx_i64, gen.rdtype) / _scs_tf
+\end{lstlisting}
+
+\textbf{与 \#1 的耦合.} \#1 与 \#2 互为掩盖: 仅修复 \#2 时由于
+$\lambda \sim 10^{7}\,\text{m}$, Doppler 仍近似为 0; 仅修复 \#1 时由于
+sample\_times 不变, 输出仍重复. 必须同时修复后,
+跨 batch 信道演化才会显现 (相对差异约 93.5\%, 见附录 \ref{sec:verify}).
+
+% ---------------------------------------------------------------------
+\bugitem{3}{\texttt{velocities} 物理建模}{\stwo}
+
+\textbf{现象.} \vfour{} 对 3 个速度分量分别独立采样
+$|\mathcal{N}(\text{Speed}, 0.1)|$, 总速度模长
+$|\boldsymbol{v}| \approx \sqrt{3}\cdot\text{Speed}$ 而非
+$\text{Speed}$ 本身; 同时 \texttt{tf.abs} 将所有分量限制于第一象限,
+方向分布严重失真.
+
+\textbf{\vfour{} 原始代码.}
+\begin{lstlisting}[caption={v4.py: lines 1774--1775}]
+velocities = _tf.abs(_tf.random.normal(
+    shape=[batch_size, N_UE, 3], mean=Speed_local, stddev=0.1, dtype=_tf.float32))
+\end{lstlisting}
+
+\textbf{\vseven{} 修订.} 水平面方向角 $\phi \sim \mathcal{U}[0, 2\pi)$,
+速度模长 $|v| = |\mathcal{N}(\text{Speed}, 0.1)|$, 垂直分量 $V_z = 0$.
+\begin{lstlisting}[caption={v7.py: lines 2011--2023}]
+_phi = _tf.random.uniform(
+    shape=[batch_size, N_UE], minval=0.0, maxval=2 * float(PI),
+    dtype=_tf.float32)
+_speed_mag = _tf.abs(_tf.random.normal(
+    shape=[batch_size, N_UE], mean=Speed_local, stddev=0.1,
+    dtype=_tf.float32))
+velocities = _tf.stack([
+    _speed_mag * _tf.cos(_phi),                       # Vx
+    _speed_mag * _tf.sin(_phi),                       # Vy
+    _tf.zeros_like(_speed_mag),                       # Vz=0 (planar)
+], axis=-1)
+\end{lstlisting}
+
+% ---------------------------------------------------------------------
+\bugitem{4}{LOS 路径角度初始化}{\stwo}
+
+\textbf{现象.} \vfour{} 将所有 BS-UE 对的 LOS azimuth/zenith
+(\texttt{los\_aoa, los\_aod, los\_zoa, los\_zod}) 初始化为零,
+所有 UE 共享同一 LOS 方向, 失去空间多样性.
+
+\textbf{\vfour{} 原始代码.}
+\begin{lstlisting}[caption={v4.py: lines 1776--1779}]
+los_aoa = _tf.zeros([batch_size, N_BS, N_UE])
+los_aod = _tf.zeros([batch_size, N_BS, N_UE])
+los_zoa = _tf.zeros([batch_size, N_BS, N_UE])
+los_zod = _tf.zeros([batch_size, N_BS, N_UE])
+\end{lstlisting}
+
+\textbf{\vseven{} 修订.} 按 3GPP TR38.901 范围采样:
+azimuth $\in [0, 2\pi)$, zenith $\in [\pi/3, 2\pi/3]$ (水平面 $\pm 30^{\circ}$).
+\begin{lstlisting}[caption={v7.py: lines 2030--2041}]
+los_aoa = _tf.random.uniform(
+    shape=[batch_size, N_BS, N_UE], minval=0.0, maxval=2 * float(PI),
+    dtype=_tf.float32)
+los_aod = _tf.random.uniform(
+    shape=[batch_size, N_BS, N_UE], minval=0.0, maxval=2 * float(PI),
+    dtype=_tf.float32)
+los_zoa = _tf.random.uniform(
+    shape=[batch_size, N_BS, N_UE],
+    minval=float(PI) / 3, maxval=2 * float(PI) / 3, dtype=_tf.float32)
+los_zod = _tf.random.uniform(
+    shape=[batch_size, N_BS, N_UE],
+    minval=float(PI) / 3, maxval=2 * float(PI) / 3, dtype=_tf.float32)
+\end{lstlisting}
+
+% ---------------------------------------------------------------------
+\bugitem{5}{\texttt{distance\_3d} 硬编码 1\,m}{\stwo}
+
+\textbf{现象.} \vfour{} 将所有 BS-UE 距离硬编码为 1\,m,
+脱离任何合理蜂窝几何, 路径损耗模型失真.
+
+\textbf{\vfour{} 原始代码.}
+\begin{lstlisting}[caption={v4.py: line 1782}]
+distance_3d = _tf.ones([1, N_BS, N_UE])
+\end{lstlisting}
+
+\textbf{\vsix{} 修订}: 当 P1B 数据可用时由最短路径 $\tau$ 推算 $d \approx \tau \cdot c$
+(下限 1\,m), 否则使用 \texttt{--default-distance-m} 配置值. 该方案在实际 P1B 数据上
+表现不佳, 详见 \#29.
+
+\textbf{\vseven{} 修订}: 见 \#29 (默认改为固定 100\,m, $\tau$ 推导改为可选模式).
+
+% ---------------------------------------------------------------------
+\bugitem{6}{Energy normalization 抹去 Rayleigh 功率波动}{\sthree}
+
+\textbf{现象.} \vfour{} 对每个 batch 各自计算总能量并归一化,
+等效于强制每 batch 总能量恒等. Rayleigh fading 的功率起伏被压平,
+Doppler 引入的小尺度功率波动同时被消去, 下游 NMSE 与 RSRP 的统计意义失效.
+
+\textbf{\vfour{} 原始代码.}
+\begin{lstlisting}[caption={v4.py: lines 1834--1835}]
+energy = _tf.reduce_sum(_tf.abs(h_c128) ** 2, axis=3, keepdims=True)
+h_norm = h_delay / _tf.cast(_tf.sqrt(energy + 1e-30), h_delay.dtype)
+\end{lstlisting}
+
+\textbf{\vseven{} 修订.} 在 batch 0 计算一次全局标量 $|H|_{\text{rms}}$,
+所有后续 batch 共除该常数.
+\begin{lstlisting}[caption={v7.py: lines 2117--2125}]
+_h0 = _generate_unnorm(_build_sample_times(0))
+_ref_energy = _tf.reduce_mean(_tf.abs(_h0) ** 2, keepdims=False)
+_ref_norm = _tf.cast(_tf.sqrt(_ref_energy + 1e-30), _h0.dtype)
+print(f"[v7 ChannelProducer] reference energy normalization: "
+      f"|H|_rms = {float(_tf.abs(_ref_norm)):.4e}")
+
+def _generate_eager(sample_times):
+    h_c128 = _generate_unnorm(sample_times)
+    return h_c128 / _ref_norm   # global, time-invariant scaling
+\end{lstlisting}
+
+副作用: 由于不再做 per-batch 归一化, 每个 batch 之间能量自然连续,
+Phase C 验证显示批边界跳变约 $2.6\times 10^{-7}$ (浮点精度级).
+
+% ---------------------------------------------------------------------
+\bugitem{7}{物理参数边界校验}{\sone}
+
+\textbf{现象.} \vfour{} 不校验 \texttt{carrier\_frequency}, \texttt{scs},
+\texttt{Speed}; 用户传入异常值时静默执行.
+
+\textbf{\vseven{} 修订.} 新增 \texttt{\_validate\_physics\_params()},
+在 CLI 解析后调用, 使用 \texttt{ValueError} 而非 \texttt{assert}
+(\texttt{python -O} 下 assert 会被剥除).
+\begin{lstlisting}[caption={v7.py: lines 256--274}]
+def _validate_physics_params(cf=None, sc=None, sp=None):
+    """Validate physics parameters. Uses module globals if args omitted.
+    Raises ValueError (not assert) so it survives `python -O`."""
+    cf = carrier_frequency if cf is None else cf
+    sc = scs if sc is None else sc
+    sp = Speed if sp is None else sp
+    _wavelength = 3e8 / cf
+    if not (1e8 < cf < 1e12):
+        raise ValueError(
+            f"carrier_frequency={cf} Hz - "
+            f"expected 100 MHz - 1 THz for 5G/sub-THz")
+    if not (1e-4 < _wavelength < 10):
+        raise ValueError(
+            f"wavelength={_wavelength} m - "
+            f"implausible for 5G (expected mm-cm range)")
+    if sc not in (15e3, 30e3, 60e3, 120e3, 240e3):
+        raise ValueError(
+            f"scs={sc} Hz - not a standard NR numerology")
+\end{lstlisting}
+
+% =====================================================================
+\section{鲁棒性}
+\label{sec:robustness}
+
+% ---------------------------------------------------------------------
+\bugitem{8}{\texttt{batch\_idx} 递增时机}{\sone}
+
+\textbf{现象.} \vfour{} 将计数 (\texttt{symbol\_counter}) 放在循环末尾递增.
+若 downstream (FFT, ring buffer 写入) 抛异常, 重试时计数语义混乱.
+
+\textbf{\vseven{} 修订.} 在 \texttt{generate\_fn()} 成功返回后立即递增
+\texttt{batch\_idx}, 与下游处理解耦.
+\begin{lstlisting}[caption={v7.py: lines 2199--2202}]
+# v7 #V6-4: increment batch_idx IMMEDIATELY after successful
+# generate_fn() so a downstream exception does not trigger a
+# duplicate batch on retry.
+batch_idx += 1
+\end{lstlisting}
+
+% ---------------------------------------------------------------------
+\bugitem{9}{Producer 存活检查}{\stwo}
+
+\textbf{现象.} \vfour{} 仅在 warmup 阶段检查 producer 进程存活,
+主循环进入后不再检查. Producer 异常退出后, 主进程持续从 ring buffer 读取
+stale data, 错误以静默形式向下游传播.
+
+\textbf{\vsix/\vseven{} 修订.} 主循环中每 1000 次迭代检查 \texttt{proc.is\_alive()},
+死亡时打印 exit code 并 break. 同时 ring buffer 读取增加超时保护.
+
+% ---------------------------------------------------------------------
+\bugitem{10}{异常重试上限}{\stwo}
+
+\textbf{现象.} \vfour{} 在 producer 主循环 \texttt{except Exception} 后
+\texttt{traceback.print\_exc()} 并 \texttt{time.sleep(1.0)}, 不设上限.
+持续故障会以每秒一份 traceback 的频率污染日志, 同时占用 GPU 资源.
+
+\textbf{\vfour{} 原始代码.}
+\begin{lstlisting}[caption={v4.py: lines 1880--1884}]
+except Exception as e:
+    print(f"[v4 UnifiedChannelProducerProcess] ERROR in generation loop: {e}")
+    import traceback
+    traceback.print_exc()
+    time.sleep(1.0)
+\end{lstlisting}
+
+\textbf{\vseven{} 修订.}
+\begin{lstlisting}[caption={v7.py: lines 2154--2164}]
+except Exception as e:
+    consecutive_errors += 1
+    print(f"[v7 UnifiedChannelProducerProcess] ERROR "
+          f"({consecutive_errors}/{MAX_CONSECUTIVE_ERRORS}): {e}")
+    import traceback
+    traceback.print_exc()
+    if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+        print(f"[v7 UnifiedChannelProducerProcess] Too many "
+              f"consecutive errors - exiting.")
+        break
+    time.sleep(1.0)
+\end{lstlisting}
+成功一次后 \texttt{consecutive\_errors} 重置为 0, 因此偶发故障不会累计.
+
+% ---------------------------------------------------------------------
+\bugitem{11}{Socket 模式 multi-UE 处理}{\stwo}
+
+\textbf{现象.} \vfour{} socket 模式下若 \texttt{num\_ues>1},
+将同一份 processed signal 广播给所有 UE; 结果错误但无任何提示.
+
+\textbf{\vseven{} 修订.} 启动时显式拒绝:
+\begin{verbatim}
+if num_ues > 1 and mode == "socket":
+    raise ValueError("Socket mode does not support num_ues>1")
+\end{verbatim}
+
+% ---------------------------------------------------------------------
+\bugitem{12}{\texttt{\_stalled\_ue\_logged} 状态恢复}{\sone}
+
+\textbf{现象.} \vfour{} UE 一旦被标记 stalled, 永远不会移出
+\texttt{\_stalled\_ue\_logged}; UE 实际恢复后既无日志也无后续检测.
+
+\textbf{\vseven{} 修订.}
+\begin{verbatim}
+_recovered = self._stalled_ue_logged & active_set
+if _recovered:
+    print(f"UE recovered from stall: {sorted(_recovered)}")
+    self._stalled_ue_logged -= _recovered
+\end{verbatim}
+
+% ---------------------------------------------------------------------
+\bugitem{13}{天线数一致性校验}{\sone}
+
+\textbf{现象.} 用户传入 \texttt{--gnb-ant 4 --gnb-nx 1 --gnb-ny 1} 时,
+\texttt{PanelArray} 维度推导失败, 报错信息晦涩.
+
+\textbf{\vseven{} 修订.} \texttt{main()} 入口处显式校验
+\texttt{gnb\_ant == gnb\_nx * gnb\_ny}, 不通过则直接报错并指明具体值.
+
+% ---------------------------------------------------------------------
+\bugitem{14}{\texttt{random.sample} 边界检查}{\sone}
+
+\textbf{现象.} \texttt{num\_ues > len(all\_indices)} 时,
+\vfour{} 直接命中 stdlib \texttt{ValueError}, 用户难以定位是 P1B 索引耗尽.
+
+\textbf{\vseven{} 修订.} 提前检查并给出可定位错误:
+\begin{verbatim}
+if num_ues > len(all_indices):
+    raise ValueError(
+        f"--num-ues={num_ues} exceeds available RX indices "
+        f"({len(all_indices)}) in {p1b_npz}")
+\end{verbatim}
+
+% =====================================================================
+\section{性能与内存}
+\label{sec:performance}
+
+% ---------------------------------------------------------------------
+\bugitem{15}{UL 路径 \texttt{skip\_quant}}{\stwo}
+
+\textbf{现象.} UL superposition 中各 UE 的 \texttt{process\_slot\_ipc()}
+调用结束时, 实际向上累加用的是复数 \texttt{gpu\_out}, 但 \vfour{} 仍执行了
+完整的 clip + cast$\to$int16 写入 \texttt{\_ul\_dummy\_out};
+该输出立即被丢弃, 浪费一次 GPU memcpy + kernel.
+
+\textbf{\vseven{} 修订.} 新增 \texttt{skip\_quant} 参数, UL 路径调用时
+设置 \texttt{skip\_quant=True}; 对应 CUDA Graph 也跳过最终量化分支
+(\texttt{\_use\_graph\_this\_call = not skip\_quant}).
+
+% ---------------------------------------------------------------------
+\bugitem{16}{\texttt{NoiseProducer} 显存占用}{\stwo}
+
+\textbf{现象.}
+\begin{center}
+\begin{tabular}{l c c c}
+\toprule
+版本 & dtype & BATCH\_SIZE & maxlen \\
+\midrule
+v4 & float64 & 64 & 256 \\
+v7 & float32 & 32 & 64 \\
+\bottomrule
+\end{tabular}
+\end{center}
+v4 配置下, 单个 noise buffer 占约 480\,MB (\texttt{gnb\_ant=4}),
+4 UE $\times$ 2 (DL+UL) 接近 4\,GB.
+
+\textbf{\vseven{} 修订.} dtype 降为 float32, BATCH\_SIZE 降为 32.
+单 buffer 约 15\,MB, 4 UE $\times$ 2 约 120\,MB ($\sim 16\times$ VRAM 节省).
+噪声物理统计仅需 $\sim 5$ bit 精度, 远小于 float64 的 52 bit; consumer 端
+\texttt{\_regenerate\_noise} 在赋值时隐式 cast 回 float64, 物理精度无损.
+
+\begin{lstlisting}[caption={v7.py: lines 2184--2200}]
+BATCH_SIZE = 32           # was 64; consumer rate is ~1/slot anyway
+NOISE_DTYPE = cp.float32 if GPU_AVAILABLE else np.float32
+
+def __init__(self, buffer, noise_len):
+    super().__init__()
+    self.buffer = buffer
+    self.noise_len = noise_len
+    self.stop_event = threading.Event()
+    self.daemon = True
+
+def run(self):
+    if GPU_AVAILABLE:
+        cp.cuda.Device(0).use()
+    while not self.stop_event.is_set():
+        batch = cp.random.randn(
+            self.BATCH_SIZE, 2, self.noise_len).astype(self.NOISE_DTYPE)
+        self.buffer.put_batch(batch)
+\end{lstlisting}
+
+% ---------------------------------------------------------------------
+\bugitem{17}{\texttt{GTBatchSaver} 异步写盘}{\stwo}
+
+\textbf{现象.} \vfour{} 主循环在每个保存点同步调用 \texttt{np.savez\_compressed},
+压缩耗时数十至数百毫秒, 期间主循环停滞, 出现 ring buffer 拥塞与 UE drop.
+
+\textbf{\vseven{} 修订.} 后台 daemon thread + \texttt{Queue(maxsize=16)}
+异步写盘. queue 满时降级为同步写 (背压机制, 不丢数据);
+\texttt{flush\_all()} 先 \texttt{join()} 确保排空.
+
+% ---------------------------------------------------------------------
+\bugitem{18}{\texttt{bypass\_copy} 预分配}{\sone}
+
+\textbf{现象.} \vfour{} 每次 bypass copy 调用都执行 \texttt{cp.zeros(...)} 重新分配
+GPU 内存, 高频调用下加大 allocator 压力.
+
+\textbf{\vseven{} 修订.} lazy 分配 + 按 \texttt{(nsamps, dst\_nbAnt)} key 缓存
+复用 buffer. 同时修复 \vfour{} 中非对称天线场景下
+\texttt{dst\_2d[:, min\_ant*2:]} 未初始化的副作用.
+
+% ---------------------------------------------------------------------
+\bugitem{19}{UL \texttt{set\_last\_ul\_rx\_ts} 合并}{\sone}
+
+\textbf{现象.} bypass mode 下, \vfour{} 每个 UE 各调用一次
+\texttt{ipc\_gnb.set\_last\_ul\_rx\_ts}, 触发一次 \texttt{futex\_wake};
+$N$ 个 UE 即 $N$ 次系统调用.
+
+\textbf{\vseven{} 修订.} 收集 \texttt{max\_new\_head}, 循环外仅 wake 一次:
+\begin{verbatim}
+if _any_bypass:
+    self.ipc_gnb.set_last_ul_rx_ts(int(_max_new_head - 1))
+\end{verbatim}
+
+% ---------------------------------------------------------------------
+\bugitem{20}{\texttt{IPCRingBuffer} 同步移出锁}{\sthree}
+
+\textbf{现象.} \vfour{} 在 \texttt{with s.not\_full:} 锁内调用
+\texttt{cp.cuda.Device(0).synchronize()}. CUDA stream 同步耗时取决于
+当前 kernel 队列深度 (毫秒级), 期间所有等待该锁的进程被阻塞;
+multi-UE 场景下整个 pipeline 被串行化.
+
+\textbf{\vseven{} 修订.} 锁内仅做 index 更新与 \texttt{notify\_all},
+\texttt{Device.synchronize()} 移到锁外. 同步完成后 re-notify
+防止 consumer 与 producer 间出现竞态.
+\begin{verbatim}
+with s.not_full:
+    # write + index update + notify
+    ...
+s.not_empty.notify_all()
+cp.cuda.Device(0).synchronize()    # outside the lock
+with s.not_empty:
+    s.not_empty.notify_all()        # re-notify
+\end{verbatim}
+
+% =====================================================================
+\section{CUDA Graph}
+\label{sec:cudagraph}
+
+% ---------------------------------------------------------------------
+\bugitem{21}{Capture 模式: Relaxed}{\sone}
+
+\textbf{现象.} \vfour{} 调用 \texttt{stream.begin\_capture()} 默认使用
+Global capture mode, 与同时运行的其他 stream (Sionna XLA, NoiseProducer)
+存在冲突, capture 偶发失败.
+
+\textbf{\vseven{} 修订.}
+\begin{verbatim}
+try:
+    mode = cp.cuda.runtime.streamCaptureModeRelaxed
+except AttributeError:
+    mode = 2  # CUDA runtime magic number
+stream.begin_capture(mode=mode)
+\end{verbatim}
+
+% ---------------------------------------------------------------------
+\bugitem{22}{Capture 失败可恢复}{\sone}
+
+\textbf{现象.} \vfour{} 一旦首次 capture 失败, 直接设置
+\texttt{self.use\_cuda\_graph = False}, 整个生命周期内不再尝试,
+即便后续条件已恢复. 退化为 eager mode 后单 slot 处理时间显著增加.
+
+\textbf{\vseven{} 修订.} 维护 \texttt{\_capture\_failure\_count}
+最多重试 5 次; 不直接关闭 graph 路径, 下一 slot 仍会尝试 capture.
+
+% =====================================================================
+\section{杂项}
+\label{sec:misc}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.30}
+\begin{tabular}{c p{8.4cm} c}
+\toprule
+\textbf{编号} & \textbf{修订内容} & \textbf{严重度} \\
+\midrule
+23 & PEP 604 \texttt{Tuple[...]|None} (Py3.10+) 改为
+     \texttt{Optional[Tuple[...]]} (Py3.8 兼容) & \sone \\
+24 & CPU 模式下 (\texttt{GPU\_AVAILABLE=False}) \texttt{noise\_dBFS}
+     不再被静默丢失, 改用 Python \texttt{float} 计算 \texttt{noise\_std\_abs} & \sone \\
+25 & 移除分配后从未使用的 \texttt{self.\_ul\_clip\_3d = cp.zeros(...)} & \sone \\
+26 & \texttt{if pl\_linear != 1.0: gpu\_out *= pl\_linear} 改为
+     无条件乘 \texttt{cp.float64(pl\_linear)}, 避免 CUDA Graph capture
+     时出现 Python 分支 & \sone \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% =====================================================================
+\section{控制面稳定性 (v6 $\to$ v7)}
+\label{sec:control}
+
+v6 修复完物理建模后, OAI 在 attach 阶段暴露出新的不稳定现象, 见下表.
+
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{l c c}
+\toprule
+\textbf{配置} & \textbf{结果} & \textbf{结论} \\
+\midrule
+\texttt{UE\_SPEED=3}, stable 45s   & PARTIAL, srs=0   & 过早进入动态信道, attach/SRS 不稳 \\
+\texttt{UE\_SPEED=0}, stable 300s  & OK, srs=1        & 长稳定窗口可完成 SRS 配置 \\
+\texttt{UE\_SPEED=3}, stable 300s  & OK, srs=1        & 问题与 \texttt{Speed=3} 本身无关 \\
+\texttt{UE\_SPEED=3}, auto trigger & OK, srs=1$\sim$2 & 事件触发可替代固定等待 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% ---------------------------------------------------------------------
+\bugitem{27}{Attach-Stable Window}{\stwo}
+
+\textbf{现象.} \vsix{} 启动后立即进入动态 \texttt{sample\_times}.
+RRC/NAS/SRS 配置阶段未完成时, UL Msg3 收不稳, RRCReconfiguration
+无法触发, periodic SRS 因依赖 RRCReconfigurationComplete 而无法启用,
+表现为 \texttt{srs=0}.
+
+\textbf{\vsix{} 行为.}
+\begin{lstlisting}[caption={v6.py: lines 2119--2120 (启动即动态)}]
+sample_times_now = _build_sample_times(batch_idx)
+h_c128_norm = generate_fn(sample_times_now)
+\end{lstlisting}
+
+\textbf{\vseven{} 修订.} 引入 attach-stable 窗口, 期间将
+\texttt{sample\_times} 冻结于 batch 0; 触发后从 0 重新计时, 避免
+inter-batch 大相位跳变.
+\begin{lstlisting}[caption={v7.py: lines 2186--2196}]
+if attach_stable_active:
+    # Freeze inter-batch time during attach so RRC/NAS/SRS setup
+    # sees a quasi-static channel, then restart dynamic time at 0.
+    sample_times_now = _build_sample_times(0)
+else:
+    if (attach_stable_batches > 0 and
+            batch_idx == attach_stable_batches and
+            not attach_stable_handoff_logged):
+        print("[v7 AttachStable] dynamic channel handoff")
+    dyn_batch_idx = batch_idx - dynamic_start_batch
+    sample_times_now = _build_sample_times(dyn_batch_idx)
+\end{lstlisting}
+
+% ---------------------------------------------------------------------
+\bugitem{28}{Auto Handoff}{\sone}
+
+\textbf{背景.} 固定时长稳定窗口对场景敏感: 太短 attach 失败,
+太长拉低实验吞吐.
+
+\textbf{\vseven{} 修订.} \texttt{launch\_all\_v7.sh} 后台监控
+\texttt{gnb.log}, 检测 \texttt{Received RRCReconfigurationComplete}
+后等待 \texttt{ATTACH\_STABLE\_POST\_DELAY=15s},
+写入触发文件 \texttt{/tmp/oai\_gpu\_ipc/v7\_dynamic\_enable};
+producer 每 10 batch 检查一次该文件存在性.
+\begin{lstlisting}[caption={v7.py: lines 2170--2184}]
+if attach_stable_active:
+    if (attach_stable_mode == "auto" and attach_stable_trigger_file and
+            (batch_idx % 10 == 0) and
+            _os.path.exists(attach_stable_trigger_file)):
+        attach_stable_active = False
+        dynamic_start_batch = batch_idx
+        attach_stable_handoff_logged = True
+        print("[v7 AttachStable] dynamic channel handoff "
+              f"triggered by file: {attach_stable_trigger_file}")
+    elif batch_idx >= attach_stable_batches:
+        attach_stable_active = False
+        dynamic_start_batch = batch_idx
+        attach_stable_handoff_logged = True
+        print("[v7 AttachStable] dynamic channel handoff "
+              f"after max stable window ({attach_stable_sec:.1f}s)")
+\end{lstlisting}
+\texttt{--attach-stable-sec=300} 同时作为 fallback ceiling
+(触发文件未出现时强制切换).
+
+% ---------------------------------------------------------------------
+\bugitem{29}{P1B 距离推导模式}{\stwo}
+
+\textbf{背景.} \vsix{} 在 P1B 数据可用时强制按 $d \approx \tau_{\min} \cdot c$
+推算 BS-UE 距离, 下限 1\,m.
+
+\textbf{现象.} P1B 数据中的 \texttt{tau\_rays} 在 dump 流程中通常以
+\textit{相对延迟} 形式存储 (相对于第一径或 frame boundary), 并非
+BS-UE 间的绝对传播时延. 实际数据上 $\tau_{\min}$ 经常为亚 ns 级,
+$c \cdot \tau_{\min} < 1\,\text{m}$, 全部被 \texttt{tf.maximum(..., 1.0)}
+楼至 1\,m, 各 BS-UE 对距离同时塌陷至 1\,m. 该几何下:
+\begin{itemize}
+  \item 路径损耗值过低, 接收功率超出 OAI gNB 内 AGC 量程;
+  \item TA 估算接近 0, 偏离合理蜂窝场景;
+  \item RSRP 测量饱和.
+\end{itemize}
+对应 attach 阶段不稳, \texttt{srs=0}.
+
+\textbf{\vsix{} 行为.}
+\begin{lstlisting}[caption={v6.py: lines 2004--2017}]
+_default_d = float(cfg.get('default_distance_m', 100.0))
+if 'ray_data_stacked' in cfg or 'ray_data' in cfg:
+    # Use earliest tap delay across paths to estimate distance
+    _tau_first = _tf.reduce_min(tau_rays, axis=-1)
+    _tau_first = _tf.squeeze(_tau_first, axis=-1)
+    distance_3d = _tau_first * _tf.constant(SPEED_OF_LIGHT, _tau_first.dtype)
+    distance_3d = _tf.maximum(distance_3d, 1.0)                 # floor at 1m
+else:
+    distance_3d = _tf.ones([1, N_BS, N_UE]) * _default_d
+\end{lstlisting}
+
+\textbf{\vseven{} 修订.} 引入 \texttt{--p1b-distance-mode \{default, tau\}},
+默认 \texttt{default} (使用 \texttt{--default-distance-m=100}m), 仅在显式
+请求下走 $\tau$ 推导. 该改动将\textit{几何距离}与\textit{PDP 内部相对延迟}
+两个概念解耦, 避免 P1B 数据格式假设传导至 attach 路径损耗.
+
+\begin{lstlisting}[caption={v7.py: lines 2051--2070}]
+_default_d = float(cfg.get('default_distance_m', 100.0))
+_p1b_distance_mode = str(cfg.get('p1b_distance_mode', 'default')).lower()
+_has_p1b = 'ray_data_stacked' in cfg or 'ray_data' in cfg
+if _has_p1b and _p1b_distance_mode == 'tau':
+    _tau_first = _tf.reduce_min(tau_rays, axis=-1)
+    _tau_first = _tf.squeeze(_tau_first, axis=-1)
+    distance_3d = _tau_first * _tf.constant(SPEED_OF_LIGHT, _tau_first.dtype)
+    distance_3d = _tf.maximum(distance_3d, 1.0)
+    print(f"[v7 ChannelProducer] distance_3d derived from P1B tau, "
+          f"range=[{float(_tf.reduce_min(distance_3d))}, "
+          f"{float(_tf.reduce_max(distance_3d))}] m")
+else:
+    distance_3d = _tf.ones([1, N_BS, N_UE]) * _default_d
+    if _has_p1b:
+        print(f"[v7 ChannelProducer] distance_3d=fixed {_default_d} m "
+              f"(P1B distance mode={_p1b_distance_mode})")
+    else:
+        print(f"[v7 ChannelProducer] distance_3d=fallback {_default_d} m "
+              f"(no P1B; configure via --default-distance-m)")
+\end{lstlisting}
+
+\textbf{物理影响.} 在该 PDP-based 通道模型中, \texttt{distance\_3d}
+仅作用于大尺度路径损耗, 不参与小尺度 fading (PDP, Doppler, angular spread)
+的计算; 后者完全由 P1B 的 ray data 驱动. 因此固定 100\,m 不引入 PDP 形状失真,
+仅恢复合理 path-loss 标度.
+
+% =====================================================================
+\section{验证}
+\label{sec:verify}
+
+\subsection{5 阶段物理一致性测试 (\texttt{verify\_issue\_2.py})}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{c p{6.6cm} l}
+\toprule
+\textbf{Phase} & \textbf{测试内容} & \textbf{结果} \\
+\midrule
+A          & 固定 \texttt{sample\_times} 两次调用 producer
+           & \texttt{identical=True} (确认 \#2) \\
+B (3.5)    & 递增 \texttt{sample\_times}, 保留 \texttt{cf=3.5}
+           & \texttt{identical=True} (确认 \#1) \\
+B (3.5e9)  & 递增 \texttt{sample\_times}, 修复 \texttt{cf=3.5e9}
+           & relative $\Delta=93.5\%$, 信道正确演变 \\
+C          & 跨 batch 边界连续性
+           & 连续 $2.6\times10^{-7}$ vs 重置 $1.6\times10^{-5}$ ($61.6\times$) \\
+D          & \texttt{Speed=0} sanity check
+           & \texttt{identical=True}, Doppler 是唯一时变源 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{NMSE / 数据价值初步结论 (\vseven{}, SNR=10\,dB, $UE\_SPEED=3$)}
+
+短窗口数据有效, 长窗口跨越 attach $\to$ 动态切换边界后崩坏.
+
+\begin{center}
+\renewcommand{\arraystretch}{1.20}
+\begin{tabular}{c c c c}
+\toprule
+$N$ & NMSE (dB) & RSRP err (dB) & PDP corr \\
+\midrule
+10  & $-6.35$  & 0.90  & 0.9999 \\
+15  & $-7.25$  & 0.75  & 0.9997 \\
+20  & $-6.94$  & 0.80  & 0.9994 \\
+30  & $-6.83$  & 0.82  & 0.9998 \\
+100 & $+14.99$ & 15.13 & 0.2884 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+建议短窗口取 \texttt{--fixed-n 15} 作为 SNR sweep 起点; 默认 $N=100$
+不应作为当前 \vseven{} 动态链路的代表 NMSE.
+
+% =====================================================================
+\section{后续待办}
+\label{sec:todo}
+
+\begin{itemize}
+  \item Auto handoff 后仍可见 \texttt{No SRS signal},
+        \texttt{Invalid timing advance offset}, \texttt{UL Failure},
+        提示动态切换后链路仍非完全稳定; 计划比较
+        \texttt{ATTACH\_STABLE\_POST\_DELAY=15/30},
+        \texttt{ATTACH\_STABLE\_TRIGGER=rrc\_reconfig/srs} 的稳定性.
+  \item ChannelProducer 仍可见 ring buffer full / dropped, 怀疑影响
+        UL 控制面与长窗口 NMSE.
+  \item \texttt{IPCRingBuffer wrap-around view vs copy} (v4 issue \#11) 暂未修复;
+        当前仅读取场景下风险低.
+  \item \texttt{tf.experimental.dlpack} 已废弃, 等 TF 升级后统一迁移.
+  \item 全 SNR sweep 前建议先固定 \texttt{--fixed-n 15}, 同时保留 N-axis 曲线
+        用于判断每个 SNR 点的有效窗口.
+\end{itemize}
+
+\end{document}

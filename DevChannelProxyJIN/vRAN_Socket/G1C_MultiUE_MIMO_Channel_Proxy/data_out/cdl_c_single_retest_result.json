@@ -1,0 +1,112 @@
+{
+  "fit": {
+    "a1": 0.11448083171280868,
+    "a2": 0.030819813339376195,
+    "a3": 0.10233688319262098,
+    "r2": 0.9168901508904856
+  },
+  "gate_summary": {
+    "pass": 8,
+    "total": 8,
+    "epsilon": 0.14
+  },
+  "gate_rows": [
+    {
+      "snr_db": 0,
+      "speed_kmh": 3,
+      "oracle_mse": 0.18792653901154494,
+      "adaptive_mse": 0.19503090388825223,
+      "ratio": 1.0378039467659799,
+      "pass": true
+    },
+    {
+      "snr_db": 0,
+      "speed_kmh": 30,
+      "oracle_mse": 0.4250992955148879,
+      "adaptive_mse": 0.4519971927623064,
+      "ratio": 1.0632743867873018,
+      "pass": true
+    },
+    {
+      "snr_db": 5,
+      "speed_kmh": 3,
+      "oracle_mse": 0.07497486593443949,
+      "adaptive_mse": 0.07613286660103172,
+      "ratio": 1.0154451848917585,
+      "pass": true
+    },
+    {
+      "snr_db": 5,
+      "speed_kmh": 30,
+      "oracle_mse": 0.20981278820833907,
+      "adaptive_mse": 0.212372463829036,
+      "ratio": 1.0121998074691005,
+      "pass": true
+    },
+    {
+      "snr_db": 10,
+      "speed_kmh": 3,
+      "oracle_mse": 0.03605697738161206,
+      "adaptive_mse": 0.037235093527697286,
+      "ratio": 1.032673735616176,
+      "pass": true
+    },
+    {
+      "snr_db": 10,
+      "speed_kmh": 30,
+      "oracle_mse": 0.08481389938322736,
+      "adaptive_mse": 0.09027121979007047,
+      "ratio": 1.0643446468860542,
+      "pass": true
+    },
+    {
+      "snr_db": 20,
+      "speed_kmh": 3,
+      "oracle_mse": 0.007800501313422079,
+      "adaptive_mse": 0.008631435792260899,
+      "ratio": 1.1065232150411997,
+      "pass": true
+    },
+    {
+      "snr_db": 20,
+      "speed_kmh": 30,
+      "oracle_mse": 0.009894698723166999,
+      "adaptive_mse": 0.010295902719717137,
+      "ratio": 1.0405473686238447,
+      "pass": true
+    }
+  ],
+  "params": {
+    "n_frames": 2000,
+    "n_sc": 1248,
+    "burn_in": 100,
+    "cal_trials": 5,
+    "gate_trials": 5,
+    "alpha_grid": 80,
+    "cal_snrs": [
+      0,
+      5,
+      10,
+      15,
+      20
+    ],
+    "cal_speeds": [
+      3,
+      5,
+      10,
+      15,
+      20,
+      30
+    ],
+    "gate_snrs": [
+      0,
+      5,
+      10,
+      20
+    ],
+    "gate_speeds": [
+      3,
+      30
+    ]
+  }
+}

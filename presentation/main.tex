@@ -1,0 +1,354 @@
+\documentclass[aspectratio=169, 11pt]{beamer}
+
+% ── Theme: minimal, use DCL background image ──
+\usetheme{default}
+\usecolortheme{default}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}[frame number]
+\setbeamersize{text margin left=9mm,text margin right=9mm}
+
+% DCL background on every slide
+\usebackgroundtemplate{%
+  \IfFileExists{dcl_bg_template.png}{%
+    \includegraphics[width=\paperwidth,height=\paperheight]{dcl_bg_template.png}%
+  }{}%
+}
+
+% Make text readable over the background
+\setbeamercolor{normal text}{fg=black}
+\setbeamercolor{frametitle}{fg=black}
+\setbeamerfont{frametitle}{series=\bfseries, size=\Large}
+\setbeamerfont{framesubtitle}{size=\small}
+\setbeamertemplate{frametitle}{%
+  \vspace{0.42cm}%
+  \hspace*{0.5mm}\insertframetitle\par%
+  \vspace{0.10cm}%
+}
+\setbeamercolor{block title}{fg=black,bg=blue!8}
+\setbeamercolor{block body}{fg=black,bg=white!86}
+\setbeamercolor{alerted text}{fg=blue!65!black}
+\setbeamertemplate{itemize item}{\raise0.2ex\hbox{\scriptsize$\blacktriangleright$}}
+\setbeamertemplate{itemize subitem}{\raise0.1ex\hbox{\tiny$\bullet$}}
+\setbeamertemplate{enumerate item}{\insertenumlabel.}
+
+% ── Packages ──
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{adjustbox}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{xcolor}
+\usepackage{ragged2e}
+\usepackage{etoolbox}
+
+% ── Images work both from presentation.zip root and local presentation/ folder ──
+\graphicspath{{./}{../figures/}}
+
+% ── Compact, consistent slide helpers ──
+\AtBeginEnvironment{itemize}{\setlength{\itemsep}{3pt}\setlength{\parskip}{0pt}}
+\AtBeginEnvironment{enumerate}{\setlength{\itemsep}{5pt}\setlength{\parskip}{0pt}}
+\newcommand{\tightvspace}{\vspace{0.35em}}
+\newcommand{\slidefig}[2]{%
+  \begin{center}
+    \includegraphics[width=#1\linewidth,height=0.76\paperheight,keepaspectratio]{#2}
+  \end{center}
+}
+\newcommand{\callout}[1]{%
+  \begin{center}
+    \fbox{\begin{minipage}{0.86\linewidth}\centering #1\end{minipage}}
+  \end{center}
+}
+
+% ── Meta ──
+\title{SRS Uplink Channel Estimation \\
+       \& Structured Output for Digital Twin}
+\subtitle{Progress Report}
+\author{Liu Lu (류루)}
+\institute{DCL Lab, Yonsei University}
+\date{May 2026}
+
+% ══════════════════════════════════════════════════════════════════════
+\begin{document}
+
+% ── Title ──
+\begin{frame}
+\titlepage
+\end{frame}
+
+% ── Outline ──
+\begin{frame}{Outline}
+\tableofcontents
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════
+\section{Unified DL / UL Architecture}
+% ══════════════════════════════════════════════════════════════════════
+
+\begin{frame}{Digital Twin Data Pipeline — DL / UL Unified}
+\slidefig{0.98}{fig_unified_ul_dl_architecture.png}
+\end{frame}
+
+\begin{frame}{DL vs UL — Same Output Contract}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.49\textwidth}
+\begin{block}{Downlink: Junsu / CSE-CsiNet v3.3}
+\begin{itemize}
+  \item CSI-RS $\to$ UE estimate $\to$ neural codec
+  \item ColdAE + FiLM + GRU + 3\,EMA
+  \item Quantize $\to$ air $\to$ gNB decode
+  \item Output: $\alert{S_\text{dl} + H_\text{dl}}$
+\end{itemize}
+\end{block}
+\end{column}
+\begin{column}{0.49\textwidth}
+\begin{block}{Uplink: Liu / IBVSS + Kalman}
+\begin{itemize}
+  \item SRS $\to$ LS estimate $\to$ de-rotation
+  \item IBVSS / Kalman adaptive $\alpha$
+  \item Structure extraction + DFT compress
+  \item Output: $\alert{S_\text{ul} + H_\text{ul}}$
+\end{itemize}
+\end{block}
+\end{column}
+\end{columns}
+
+\vspace{4pt}
+\centering
+\footnotesize
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{>{\bfseries}lll}
+\toprule
+Shared field & \textbf{DL} & \textbf{UL} \\
+\midrule
+PDP accumulation       & \texttt{p\_state}     & \texttt{p\_state} \\
+Spatial covariance     & \texttt{R\_tx\_state}  & \texttt{R\_rx\_state} \\
+Doppler proxy          & \texttt{d\_state}      & \texttt{d\_state} \\
+Confidence gate        & \texttt{c\_t}          & \texttt{confidence} \\
+Compressed H           & $\hat{H}_\text{cold} + c_t(\hat{H}_\text{str}{+}\hat{H}_\text{inst})$
+                       & \texttt{h\_taps} + \texttt{H\_c} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════
+\section{UL Pipeline Detail}
+% ══════════════════════════════════════════════════════════════════════
+
+\begin{frame}{SRS Uplink Pipeline — Block Diagram}
+\slidefig{0.98}{fig1_block_diagram.png}
+\end{frame}
+
+\begin{frame}{Adaptive Filtering — Three Algorithms}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.32\textwidth}
+\begin{block}{EWMA}
+\begin{itemize}
+  \item Fixed $\alpha$
+  \item Simplest baseline
+  \item Sensitive to outlier frames
+\end{itemize}
+\end{block}
+\end{column}
+\begin{column}{0.32\textwidth}
+\begin{block}{IBVSS}
+\begin{itemize}
+  \item $\alpha = 1 - 1/\text{ratio}$
+  \item Kalman steady-state mapping
+  \item Zero calibration needed
+  \item \textbf{Most robust in practice}
+\end{itemize}
+\end{block}
+\end{column}
+\begin{column}{0.32\textwidth}
+\begin{block}{Scalar Kalman}
+\begin{itemize}
+  \item Full Riccati recursion
+  \item IAE online $Q$ estimation
+  \item Best at high SNR
+  \item Slower warmup (30 frames)
+\end{itemize}
+\end{block}
+\end{column}
+\end{columns}
+
+\vspace{4pt}
+\callout{\small Key improvements applied to IBVSS and Kalman: P4 \textit{per-band median} innovation ($B{=}8$) + bilateral $d$ normalization}
+\end{frame}
+
+\begin{frame}{Structured Output — Fields}
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.52\textwidth}
+\begin{block}{Structure $S$ per extraction frame}
+\scriptsize
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{ll}
+\toprule
+\textbf{Field} & \textbf{Description} \\
+\midrule
+\texttt{p\_inst / p\_state}   & PDP (instant / accum.) \\
+\texttt{R\_rx\_inst / \_state} & RX spatial cov. \\
+\texttt{d\_inst / d\_state}   & Multi-lag autocorr. \\
+\texttt{confidence}            & Warmup gate $[0,1]$ \\
+\texttt{rsrp}                  & Received power \\
+\texttt{snr\_db}               & SNR (even-odd) \\
+\texttt{sv}                    & Singular values \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{block}
+\end{column}
+\begin{column}{0.46\textwidth}
+\begin{block}{Compressed $H$}
+\small
+\begin{itemize}
+  \item \texttt{h\_taps}: delay-domain kept taps, shape $(2{\cdot}N_\text{tap})$
+  \item \texttt{H\_c}: full-band FFT reconstruction, shape $(N_\text{sc})$
+\end{itemize}
+\end{block}
+
+\vspace{-2pt}
+\begin{block}{Update rules}
+\scriptsize
+\textbf{EMA convention}
+\[
+  x_\text{state}[t] = (1{-}\alpha)\,x_\text{state}[t{-}1] + \alpha\,x_\text{inst}[t]
+\]
+\vspace{-9pt}
+\textbf{Doppler autocorrelation}
+\[
+  d[\tau] = \frac{|\langle H_t, H_{t{-}\tau}\rangle|}
+                 {\sqrt{\|H_t\|^2 \cdot \|H_{t{-}\tau}\|^2}}
+\]
+\end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════
+\section{OAI Real-System Results}
+% ══════════════════════════════════════════════════════════════════════
+
+\begin{frame}{OAI Sweep — NMSE vs SNR}
+\slidefig{0.94}{clean_2panel.png}
+\vspace{-8pt}
+\small
+\centering
+RF Simulator channel \quad CHANNEL\_SEED=42 \quad $2{\times}2$ MIMO \quad 1248 active SC
+\end{frame}
+
+\begin{frame}{OAI Sweep — Summary Table}
+\centering
+\footnotesize
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{l|cccc}
+\toprule
+\textbf{Algorithm} & \textbf{5\,dB} & \textbf{10\,dB} & \textbf{15\,dB} & \textbf{20\,dB} \\
+\midrule
+\multicolumn{5}{c}{\textit{NMSE $P_{50}$ (dB) — median, lower is better}} \\
+\midrule
+EWMA   & $-9.33$  & $-0.62$\textsuperscript{*}  & $-9.27$  & $-8.88$ \\
+IBVSS  & $\mathbf{-10.46}$ & $\mathbf{-10.06}$ & $\mathbf{-10.87}$ & $-11.00$ \\
+Kalman & $+21.52$\textsuperscript{$\dagger$} & $-11.19$ & $-9.92$ & $\mathbf{-11.45}$ \\
+\midrule
+\multicolumn{5}{c}{\textit{NMSE $P_{90}$ (dB) — worst 10\%, lower is better}} \\
+\midrule
+EWMA   & $+25.87$ & $+25.40$ & $-1.72$  & $+1.65$ \\
+IBVSS  & $\mathbf{-7.77}$  & $\mathbf{-8.55}$  & $\mathbf{-6.41}$  & $+21.55$\textsuperscript{$\ddagger$} \\
+Kalman & $+27.00$ & $-7.00$  & $+25.25$ & $\mathbf{-8.58}$ \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+
+\vspace{4pt}
+\scriptsize
+\textsuperscript{*}EWMA 10\,dB: data quality issue. \quad
+\textsuperscript{$\dagger$}Kalman 5\,dB: warmup disaster. \quad
+\textsuperscript{$\ddagger$}IBVSS 20\,dB $P_{90}$: timing-glitch outlier.
+\end{frame}
+
+\begin{frame}{Key Findings}
+\small
+\begin{enumerate}
+  \item \textbf{IBVSS is the most robust algorithm} \\
+        $P_{50} \in [-10, -11]$\,dB across all SNR — no catastrophic failure
+  \item \textbf{Kalman is optimal at high SNR} \\
+        $-11.45$\,dB at 20\,dB, but warmup sensitivity at low SNR
+  \item \textbf{Adaptive $\alpha$ suppresses worst-case frames} \\
+        IBVSS $P_{90}$: $[-6, -9]$\,dB \quad vs \quad EWMA: $[+1, +26]$\,dB
+\end{enumerate}
+
+\vspace{4pt}
+\callout{\small For vRAN deployment, consistent $-10$\,dB is better than ``sometimes $-11.5$, sometimes $+21.5$''.}
+\end{frame}
+
+% ══════════════════════════════════════════════════════════════════════
+\section{Verification \& Next Steps}
+% ══════════════════════════════════════════════════════════════════════
+
+\begin{frame}{Validation Summary}
+\centering
+\footnotesize
+\begin{adjustbox}{max width=\linewidth}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Channel model} & \textbf{IBVSS} & \textbf{Kalman} & \textbf{Note} \\
+\midrule
+CDL-C (NLOS, 24 clusters) & 8/8 PASS & 8/8 PASS & Primary test \\
+CDL-D (LOS, 13 clusters)  & 8/8 PASS & 8/8 PASS & First-time pass \\
+CDL-A (NLOS, 23 clusters) & 7/8 PASS & 7/8 PASS & 0\,dB+30\,km/h edge \\
+P1B ray-tracing            & 6/6 PASS & 4/6 PASS & 0\,dB Riccati limit \\
+\midrule
+Transient tracking         & \multicolumn{3}{c}{IBVSS converges 2--2.5$\times$ faster} \\
+\midrule
+Structured output tests    & \multicolumn{3}{c}{45/45 PASS} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+
+\vspace{5pt}
+\raggedright
+\scriptsize
+\textbf{PASS criterion} (Capture Gate, $\varepsilon{=}14\%$): \\[2pt]
+Each condition = (SNR, speed) pair, 5--20 trials averaged. \\
+PASS $\Leftrightarrow$ $\text{MSE}_\text{adaptive} \;\le\; (1{+}\varepsilon) \times \text{MSE}_\text{oracle}$,
+where oracle = best \textit{fixed} $\alpha$ found by grid search. \\[2pt]
+$n/m$ = conditions passed / total conditions tested. \\
+CDL-C/D/A: 8 conditions = \{0, 5, 10, 20\}\,dB $\times$ \{3, 30\}\,km/h. \quad
+P1B: 6 conditions = \{0, 10, 20\}\,dB $\times$ \{3, 30\}\,km/h.
+\end{frame}
+
+\begin{frame}{Next Steps}
+\centering
+\small
+\begin{adjustbox}{max width=0.82\linewidth}
+\begin{tabular}{lll}
+\toprule
+\textbf{\#} & \textbf{Task} & \textbf{Timeline} \\
+\midrule
+1 & C-code structured output writer & After Minji DB schema \\
+2 & DCL/CDL channel integration     & After Uihwan initial ver. \\
+3 & Output format spec $\to$ Minji  & Ready now \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+
+\vspace{8pt}
+\raggedright
+\textbf{Deliverables completed:}
+\footnotesize
+\begin{itemize}
+  \item Unified DL/UL architecture diagram
+  \item UL detailed block diagram
+  \item OAI sweep: 3 algorithms $\times$ 4 SNR points (12/12 data)
+  \item \texttt{output\_format\_spec.md} — unified format definition
+  \item Python prototype: 45/45 tests passing
+  \item OAI C code: EWMA / IBVSS / Kalman implemented \& compiled
+\end{itemize}
+\end{frame}
+
+\end{document}

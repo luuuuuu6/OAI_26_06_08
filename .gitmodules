@@ -1,0 +1,3 @@
+[submodule "DevChannelProxyJIN/openairinterface5g_whan"]
+	path = DevChannelProxyJIN/openairinterface5g_whan
+	url = https://github.com/luuuuuu6/openairinterface5g_whan.git

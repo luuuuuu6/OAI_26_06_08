@@ -1,0 +1,144 @@
+{
+  "log_dir": "/home/dclserver78/OAI_luuuuuu/DevChannelProxyJIN/logs/20260426_203729_G1C_v4_ipc_1ue_ga2x1_ua2x1_snr10",
+  "n_frames": 614,
+  "mimo_config": "2x2",
+  "n_active_sc": 1248,
+  "amplitude_scale_factor": 2026.714517162261,
+  "rsrp": {
+    "pattern_cosine_similarity": 0.9999850955219795,
+    "per_pair_srs_dB": [
+      [
+        75.39188121020614,
+        74.97777075182987
+      ],
+      [
+        74.96473294184582,
+        75.58883282121437
+      ]
+    ],
+    "per_pair_gt_scaled_dB": [
+      [
+        75.41761271046616,
+        74.94315136845097
+      ],
+      [
+        74.9841226822917,
+        75.57727793819632
+      ]
+    ],
+    "frame_spread_srs_dB": 51.603576043564,
+    "frame_spread_gt_dB": 6.178423372563252e-08
+  },
+  "covariance": {
+    "rx_frobenius_relative_error": 0.001786311409970995,
+    "tx_frobenius_relative_error": 0.006254686829580397,
+    "rx_correlation_srs": [
+      [
+        0.9999999999999998,
+        0.7720545833563438
+      ],
+      [
+        0.7720545833563438,
+        1.0
+      ]
+    ],
+    "rx_correlation_gt": [
+      [
+        1.0,
+        0.7737537509906967
+      ],
+      [
+        0.7737537509906967,
+        1.0000000000000002
+      ]
+    ],
+    "tx_correlation_srs": [
+      [
+        1.0,
+        0.5135199000789568
+      ],
+      [
+        0.5135199000789568,
+        1.0000000000000002
+      ]
+    ],
+    "tx_correlation_gt": [
+      [
+        1.0,
+        0.5103431546184547
+      ],
+      [
+        0.5103431546184548,
+        0.9999999999999998
+      ]
+    ]
+  },
+  "svd": {
+    "wideband_sv_srs": [
+      10457.12254603195,
+      2845.7283905841987
+    ],
+    "wideband_sv_gt": [
+      10473.367696782278,
+      2863.3617555753635
+    ],
+    "condition_number_srs": 3.6746734441108098,
+    "condition_number_gt": 3.6577172536404716,
+    "per_sc_pearson": [
+      0.9985064112431362,
+      0.9976563840224008
+    ]
+  },
+  "snr": {
+    "wideband_raw_dB": -28.172613403179664,
+    "wideband_sto_corrected_dB": -7.143688929072311,
+    "sto_samples": -8.000318991091612,
+    "ls_alpha_magnitude": 815.2333546429528,
+    "per_frame_mean_dB": -6.719931549434542,
+    "per_frame_std_dB": 2.009711758187113,
+    "per_sc_mean_dB": -7.079821507654399,
+    "per_sc_5th_pctl_dB": -8.328679561512915,
+    "per_sc_95th_pctl_dB": -4.5485245445039695,
+    "per_pair_dB": [
+      [
+        -7.174580467922423,
+        -7.142744626555794
+      ],
+      [
+        -7.04482078367543,
+        -7.199533731469493
+      ]
+    ]
+  },
+  "pdp": {
+    "sto_samples": -8.000318991091612,
+    "pdp_shape_correlation": 0.9332673049014963,
+    "srs": {
+      "peak_delay_us": 0.1953125,
+      "mean_delay_us": 0.20101355315479755,
+      "rms_delay_spread_us": 0.26734349084103715,
+      "excess_delay_10dB_us": 0.43945312500000006,
+      "excess_delay_20dB_us": 0.48828125
+    },
+    "gt": {
+      "peak_delay_us": 0.21158854166666669,
+      "mean_delay_us": 0.19944144365021813,
+      "rms_delay_spread_us": 0.21237474323673688,
+      "excess_delay_10dB_us": 0.42317708333333337,
+      "excess_delay_20dB_us": 0.48828125
+    }
+  },
+  "plots": [
+    "rsrp_comparison.png",
+    "rsrp_per_frame.png",
+    "covariance_heatmaps.png",
+    "correlation_rx.png",
+    "correlation_tx.png",
+    "svd_spectrum.png",
+    "condition_number.png",
+    "snr_per_subcarrier.png",
+    "snr_per_frame.png",
+    "pdp_comparison.png",
+    "pdp_delay_spread.png"
+  ]
+}

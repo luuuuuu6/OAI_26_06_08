@@ -1,0 +1,583 @@
+% Compile on Overleaf with XeLaTeX or LuaLaTeX.
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{kotex}
+\usepackage[margin=25mm]{geometry}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{caption}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue
+}
+
+\lstdefinestyle{codeblock}{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible,
+  frame=single,
+  rulecolor=\color{black!20},
+  backgroundcolor=\color{black!3},
+  xleftmargin=0.5em,
+  xrightmargin=0.5em
+}
+\lstset{style=codeblock}
+
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\renewcommand{\arraystretch}{1.25}
+\setlist[itemize]{leftmargin=1.5em}
+\setlist[enumerate]{leftmargin=1.8em}
+\sloppy
+
+\title{\textbf{현재 연구 진행 보고서}\\
+\large OAI 디지털 트윈과 SRS 채널 추정 고도화}
+\author{}
+\date{2026년 5월 21일}
+
+\begin{document}
+\maketitle
+
+\tableofcontents
+\newpage
+
+\section{한 문장 요약}
+
+현재 프로젝트는 ``OAI와 Channel Proxy 기반 데이터 엔진을 구축하는 단계''에서 ``OAI gNB 내부 SRS 채널 추정 경로에 실제 신호처리 알고리즘을 넣고, 이를 반복 가능한 A/B 실험으로 검증하는 단계''로 넘어왔다.
+
+최근 작업의 핵심은 AI 모델 학습 자체가 아니라, AI 학습 전에 필요한 데이터 기반을 안정화하는 것이다. 즉, OAI가 출력하는 SRS 채널 추정값을 신뢰할 수 있게 만들고, Sionna/Proxy의 GT와 정확히 비교할 수 있도록 정렬하며, EWMA와 adaptive alpha 같은 시간축 필터링 알고리즘을 실제 OAI C 코드 경로에서 실행하고 비교할 수 있게 하는 데 집중하고 있다.
+
+\begin{longtable}{p{0.22\linewidth} p{0.22\linewidth} p{0.46\linewidth}}
+\toprule
+\textbf{모듈} & \textbf{현재 상태} & \textbf{설명} \\
+\midrule
+데이터 엔진 & 기본 완성, 지속 보완 중 & OAI gNB/UE, Channel Proxy, Sionna GT dump가 end-to-end로 동작한다. \\
+SRS 채널 추정 고도화 & 진행 중 & EWMA와 adaptive alpha가 OAI C 코드에 연결되었다. 단, 최종 공정 A/B 결론은 아직 확정 전이다. \\
+평가 체계 & 주 평가 기준 형성 & 온라인 C 출력은 \code{eval_pdpR_nmse.py}에서 고정 STO 보정과 per-antenna LS 정렬을 적용해 평가한다. \\
+dclcom61 서버 이전 & 기본 완료 & CUDA, TensorFlow, Sionna, OAI 실행 환경을 맞췄고 UE attach 불안정 원인을 찾아 수정했다. \\
+AI 특징 추출 및 모델 학습 & 아직 본격 시작 전 & 단계 2의 SRS 채널 추정 출력이 안정화된 뒤 진행할 영역이다. \\
+\bottomrule
+\end{longtable}
+
+\section{전체 연구 목표}
+
+최종 목표는 OAI 기반 디지털 트윈 시스템을 구축하는 것이다. 이 시스템은 자체 V-RAN 디지털 트윈 엔진을 통해 대량의 라벨링된 채널 데이터를 생성하고, SRS 채널 추정값으로부터 단말 위치나 환경 상태를 추론하는 AI 모델을 학습한 뒤, 이를 RAN Twin 플랫폼의 sensing block에 배치하는 것을 목표로 한다.
+
+\begin{lstlisting}
+Channel Proxy + OAI loopback
+        |
+        v
+SRS / GT paired channel data with labels
+        |
+        v
+OAI gNB-side channel estimation enhancement
+        |
+        v
+PDP / spatial covariance / Doppler / SNR features
+        |
+        v
+AI model training
+        |
+        v
+RAN Twin / sensing block deployment
+\end{lstlisting}
+
+이 프로젝트는 단일 필터 하나를 만드는 작업이 아니고, 단일 AI 모델을 학습하는 작업도 아니다. 핵심은 다음 전체 경로를 한 번에 닫는 것이다.
+
+\begin{enumerate}
+  \item 통제 가능한 채널 데이터를 직접 생성한다.
+  \item OAI의 실제 PHY 경로에서 SRS 채널 추정값을 얻는다.
+  \item Proxy/Sionna GT와 비교해 추정 품질을 검증한다.
+  \item 더 깨끗한 채널 추정값을 AI가 사용할 수 있는 상태 샘플로 변환한다.
+  \item 최종적으로 위치 추정, 환경 분류, 채널 예측, RAN Twin sensing에 연결한다.
+\end{enumerate}
+
+현재 작업은 이 중 2단계와 3단계 사이에 있다. 즉, SRS 채널 추정 고도화와 평가 폐루프를 만드는 단계이다.
+
+\section{최근 진행된 연구 내용}
+
+\subsection{Adaptive alpha 알고리즘: 탐색에서 C 코드 구현까지}
+
+최근 가장 큰 연구 흐름은 adaptive alpha이다. 이는 SRS 시간축 평활화에 쓰이는 EMA 계수를 고정값으로 두지 않고, 현재 채널 상태에 따라 자동으로 바꾸는 방법이다.
+
+기본 아이디어는 다음과 같다.
+
+\begin{itemize}
+  \item 느린 채널이거나 잡음이 큰 경우에는 더 강하게 평활화해 잡음을 줄인다.
+  \item 빠른 채널이거나 Doppler가 큰 경우에는 과도하게 평활화하지 않아야 채널 변화를 따라갈 수 있다.
+  \item SNR에 따라서도 최적 alpha가 달라지므로, 하나의 고정 alpha로 모든 조건을 커버하기 어렵다.
+\end{itemize}
+
+알고리즘 탐색 과정은 다음과 같다.
+
+\begin{longtable}{p{0.25\linewidth} p{0.18\linewidth} p{0.48\linewidth}}
+\toprule
+\textbf{경로} & \textbf{결과} & \textbf{이유} \\
+\midrule
+\code{rho_obs} 자기상관 특징 & 폐기 & SNR과 Doppler가 섞여 관측되어 안정적인 제어 특징으로 쓰기 어렵다. \\
+innovation / residual 특징 & 폐기 & 필터 출력에서 파생되어 폐루프 양의 피드백을 만들고, 일부 조건에서 발산한다. \\
+1D \code{rot_rate} & 중간안으로 유지 & Doppler 감지는 가능하지만 SNR 변화를 반영하지 못한다. \\
+2D \code{rot_rate + even-odd SNR} & 현재 주안 & 하나는 이동성, 다른 하나는 잡음 수준을 감지하며 C 코드로 옮기기 쉽다. \\
+\bottomrule
+\end{longtable}
+
+최종적으로 정리된 알고리즘은 다음과 같다.
+
+\begin{lstlisting}
+For every SRS frame:
+  1. Extract rot_rate from phase rotation between H_obs and H_smooth.
+  2. Estimate SNR using even-odd subcarrier pairs.
+  3. Smooth rot_rate and SNR with EMA.
+  4. alpha = clamp(a1 * rot_rate + a2 * SNR_dB + a3).
+  5. Update H_smooth using this alpha.
+\end{lstlisting}
+
+Python 구현은 \code{srs_2d_mmse.py}의 \code{AdaptiveAlphaEMA}에 해당한다. OAI C 구현은 \code{nr_srs_2d_filter.c}의 adaptive 분기에 해당한다.
+
+다만 이 알고리즘은 모든 채널에 대해 최종적으로 검증된 해법은 아니다. CDL 표준 채널 범위에서는 좋은 결과를 보였지만, P1B ray-tracing 채널에서는 일반화가 잘 되지 않았다. 이는 \code{rot_rate}와 SNR 두 특징만으로는 실제 기하 기반 채널의 최적 alpha를 완전히 설명하기 어렵다는 의미이다.
+
+따라서 현재 adaptive alpha의 정확한 위치는 다음과 같다.
+
+\begin{quote}
+Adaptive alpha는 OAI 내부에서 실제로 실행 가능한 연구 프로토타입이며, EWMA와 비교할 수 있는 온라인 baseline이다. CDL 범위에서는 의미 있는 성능을 보였지만, 모든 ray-tracing 채널에 대한 최종 일반해는 아니다.
+\end{quote}
+
+\subsection{OAI C 코드에서 EWMA와 adaptive 전환 가능}
+
+현재 구현은 Python 시뮬레이션에만 머물러 있지 않다. OAI gNB의 SRS 채널 추정 경로에 직접 연결되어 있다.
+
+\begin{longtable}{p{0.48\linewidth} p{0.42\linewidth}}
+\toprule
+\textbf{파일} & \textbf{역할} \\
+\midrule
+\code{DevChannelProxyJIN/openairinterface5g_whan/openair1/PHY/NR_ESTIMATION/nr_srs_2d_filter.c} & EWMA와 adaptive alpha의 C 구현 \\
+\code{DevChannelProxyJIN/openairinterface5g_whan/openair1/PHY/NR_ESTIMATION/nr_srs_2d_filter.h} & method enum, 인터페이스, 환경변수 설명 \\
+\code{DevChannelProxyJIN/openairinterface5g_whan/openair1/PHY/NR_ESTIMATION/nr_ul_channel_estimation.c} & SRS 추정 메인 경로에서 2D filter 호출 \\
+\bottomrule
+\end{longtable}
+
+현재 실행 시에는 다음과 같이 EWMA와 adaptive를 전환할 수 있다.
+
+\begin{lstlisting}[language=bash]
+SRS_ESTIMATOR=2d-mmse
+SRS_2D_METHOD=ewma
+\end{lstlisting}
+
+또는:
+
+\begin{lstlisting}[language=bash]
+SRS_ESTIMATOR=2d-mmse
+SRS_2D_METHOD=adaptive
+\end{lstlisting}
+
+C 구현은 adaptive 계수를 환경변수로 덮어쓸 수 있다.
+
+\begin{longtable}{p{0.34\linewidth} p{0.56\linewidth}}
+\toprule
+\textbf{환경변수} & \textbf{의미} \\
+\midrule
+\code{SRS_2D_ADAPT_A1} & \code{rot_rate} 계수 \\
+\code{SRS_2D_ADAPT_A2} & SNR 계수 \\
+\code{SRS_2D_ADAPT_A3} & 절편 \\
+\code{SRS_2D_ADAPT_CMODEL} & even-odd SNR 추정의 주파수 선택성 보정값 \\
+\code{SRS_2D_ADAPT_ALPHA_INIT} & 초기 alpha \\
+\code{SRS_2D_ADAPT_ALPHA_MIN} & alpha 하한 \\
+\code{SRS_2D_ADAPT_ALPHA_MAX} & alpha 상한 \\
+\code{SRS_2D_ADAPT_RR_EMA} & \code{rot_rate} 평활화 계수 \\
+\code{SRS_2D_ADAPT_SNR_EMA} & SNR 평활화 계수 \\
+\bottomrule
+\end{longtable}
+
+즉, 현재 코드는 실제 OAI 실행 중에 다음처럼 EWMA와 adaptive를 같은 실험 프레임워크 안에서 비교할 수 있는 상태이다.
+
+\begin{lstlisting}[language=bash]
+METHODS="ewma adaptive" \
+SRS_ESTIMATOR=2d-mmse \
+bash run_q4_snr_ab_compare_v9.sh
+\end{lstlisting}
+
+\subsection{A/B 자동화 실험 프레임워크}
+
+최근 작업의 또 다른 핵심은 실험을 수동 단일 실행에서 자동화된 sweep 및 A/B 비교로 바꾼 것이다.
+
+\begin{longtable}{p{0.42\linewidth} p{0.48\linewidth}}
+\toprule
+\textbf{스크립트} & \textbf{역할} \\
+\midrule
+\code{run_q4_snr_ab_compare_v8.sh}, \code{run_q4_snr_ab_compare_v9.sh} & EWMA와 adaptive를 각각 실행하는 최상위 A/B 컨트롤러 \\
+\code{run_q4_snr_sweep_v8.sh}, \code{run_q4_snr_sweep_v9.sh} & 한 method에 대한 SNR sweep 실행 \\
+\code{launch_all_v8.sh}, \code{launch_all_v9.sh} & gNB, UE, Proxy, 모니터링 프로세스 시작 \\
+\code{run_q4_postprocess_v8.sh} & 독립 후처리 스크립트 \\
+\code{eval_pdpR_nmse.py} & 온라인 C 출력에 대한 직접 NMSE 평가 도구 \\
+\bottomrule
+\end{longtable}
+
+이 프레임워크에서 최근 수정된 중요한 부분은 SRS 프레임 수 기준이다. 과거에는 SRS bin 파일이 하나만 있어도 성공으로 판단할 수 있었고, 이 때문에 7프레임 partial flush가 정상 완료처럼 보이는 문제가 있었다. 현재는 \code{MIN_SRS_FRAMES}를 추가해 SRS bin 헤더의 실제 프레임 수를 읽고, 충분한 프레임이 있어야 성공으로 판정한다.
+
+현재 완료 조건은 다음에 가깝다.
+
+\begin{lstlisting}
+GT file count is enough
+AND SRS bin count is enough
+AND actual SRS frame count is enough
+\end{lstlisting}
+
+이 수정은 매우 중요하다. SRS 프레임 수가 다르면 EWMA와 adaptive의 NMSE 비교는 공정하지 않기 때문이다.
+
+\subsection{dclcom61 이전과 UE attach 불안정 원인 분석}
+
+dclcom57에서 dclcom61로 서버를 이전한 뒤, UE attach 성공률이 랜덤하게 낮아지는 문제가 발생했다. 일부 sweep는 \code{PARTIAL} 또는 \code{FAIL-ATTACH} 상태로 끝났다.
+
+관측된 증상은 다음과 같다.
+
+\begin{itemize}
+  \item UE 로그에 \code{Error decoding PBCH}가 대량으로 발생
+  \item gNB 쪽에 phantom RA가 다수 발생
+  \item ULSCH BLER가 97--99\% 수준까지 상승
+  \item 안정적인 SRS scheduling 단계로 진입하지 못함
+  \item \code{hw_slot_offset}이 run마다 7 또는 8로 흔들림
+\end{itemize}
+
+초기에는 \code{hw_slot_offset=8}이 주 원인처럼 보였다. TDD 설정에서 slot 8은 UL slot이기 때문에, UE가 초기 동기를 UL slot 쪽에 맞추면 SIB1/PBCH 수신이 깨질 수 있기 때문이다.
+
+하지만 최종 분석은 더 정교하다.
+
+\begin{quote}
+핵심 원인은 실행 중 STO가 $\pm 1$ sample씩 흔들리는 문제이다. 이는 OAI UE의 \code{nr_adjust_synch_ue} timing correction이 GPU-IPC/rfsim 환경에서 필요 없는 보정을 계속 수행하면서 생긴다. \code{hw_slot_offset=8}은 실패를 악화시키는 요소이지만, 최종 치명 원인은 STO jitter이다.
+\end{quote}
+
+최종적으로 유효했던 수정은 UE 실행 인자에 다음 옵션을 추가하는 것이다.
+
+\begin{lstlisting}[language=bash]
+--ue-timing-correction-disable
+\end{lstlisting}
+
+이 옵션은 현재 다음 스크립트에 들어가 있다.
+
+\begin{itemize}
+  \item \code{launch_all_v8.sh}
+  \item \code{launch_all_v9.sh}
+\end{itemize}
+
+socket 모드와 GPU-IPC 모드의 UE 실행 경로 모두에 적용되어 있다. 수정 후에는 최초 \code{hw_slot_offset=8}이 나와도 UE가 resync를 통해 회복하고 attach를 완료할 수 있었다.
+
+이 과정에서 얻은 중요한 교훈은 다음과 같다.
+
+\begin{quote}
+PSS 초기 동기 경로에서 \code{rx_offset}을 인위적으로 수정하면 안 된다. \code{rx_offset}은 PSS correlator가 찾은 실제 peak 위치이며, 이를 강제로 바꾸면 PBCH decoding window가 깨진다.
+\end{quote}
+
+\subsection{온라인 평가 기준 수정}
+
+초기에는 adaptive 온라인 출력의 NMSE가 매우 나쁘게 보였다. 일부 결과에서는 NMSE가 양의 dB로 나와 알고리즘이 완전히 실패한 것처럼 보였다. 그러나 이후 분석에서 상당 부분은 평가 기준 문제로 확인되었다.
+
+확인된 문제는 세 가지이다.
+
+\begin{longtable}{p{0.30\linewidth} p{0.60\linewidth}}
+\toprule
+\textbf{문제} & \textbf{영향} \\
+\midrule
+고정 STO offset & OAI FFT window와 Proxy GT 사이에 약 13.7 samples의 시스템 offset이 존재한다. \\
+per-antenna phase mismatch & 각 \code{(rx, tx)} 링크가 독립적인 phase reference를 가지므로 하나의 global LS 정렬로 충분하지 않다. \\
+slot pairing tolerance & \code{tol > 0}이면 정확히 같은 slot이 아닌 프레임이 매칭되어 NMSE가 커질 수 있다. \\
+\bottomrule
+\end{longtable}
+
+따라서 온라인 C 출력에 대한 권장 평가 방식은 다음과 같다.
+
+\begin{lstlisting}[language=bash]
+python3 eval_pdpR_nmse.py \
+  --run-dir <snr_XdB> \
+  --sto-fixed-samples 13.7 \
+  --tol 0
+\end{lstlisting}
+
+그리고 핵심 지표는 다음이다.
+
+\begin{lstlisting}
+NMSE LS-per-antenna
+\end{lstlisting}
+
+\code{eval_pdpR_nmse.py}에는 현재 다음 기능이 추가되어 있다.
+
+\begin{itemize}
+  \item \code{--sto-fixed-samples}
+  \item \code{NMSE LS-per-antenna}
+  \item per-\code{(rx,tx)} breakdown
+\end{itemize}
+
+이를 통해 온라인 OAI C 출력에 대해 더 합리적인 평가 기준을 적용할 수 있게 되었다.
+
+\section{현재 코드 구현 수준}
+
+\subsection{데이터 엔진과 end-to-end 수집}
+
+현재 가능한 기능은 다음과 같다.
+
+\begin{itemize}
+  \item OAI gNB/UE를 rfsim 또는 GPU-IPC로 실행할 수 있다.
+  \item Channel Proxy v8/v9가 채널을 주입한다.
+  \item Proxy가 Sionna GT를 저장한다.
+  \item OAI gNB가 SRS 추정 결과를 dump한다.
+  \item SNR sweep가 가능하다.
+  \item CDL 표준 모델과 P1B ray-tracing 데이터를 사용할 수 있다.
+  \item 일상 실험은 주로 2x2 MIMO이며, 구조적으로 4x4도 고려되어 있다.
+\end{itemize}
+
+즉, GT가 있는 OAI SRS 채널 추정 검증을 수행할 수 있는 기반은 이미 존재한다.
+
+\subsection{OAI SRS 2D temporal filter 연결}
+
+현재 \code{NR_SRS_EST_MMSE2D} 경로는 다음처럼 동작한다.
+
+\begin{lstlisting}
+Legacy filt8/filt16 frequency interpolation
+        |
+        v
+nr_srs_2d_filter_update()
+        |
+        v
+EWMA or adaptive alpha temporal smoothing
+        |
+        v
+dump / downstream use
+\end{lstlisting}
+
+따라서 현재 코드에서 \code{2d-mmse}라는 이름은 엄밀히 말하면 완전한 2D Wiener/MMSE 행렬 필터가 아니라, 다음 조합에 가깝다.
+
+\begin{quote}
+Stage 1은 OAI 기존 frequency-domain FIR interpolation을 사용하고, Stage 2에서 SRS slot 간 temporal smoothing을 적용하는 구조이다.
+\end{quote}
+
+\subsection{Adaptive alpha 온라인 구현}
+
+C 코드의 adaptive 구현은 다음 기능을 포함한다.
+
+\begin{itemize}
+  \item 각 \code{(rx, tx)} 쌍마다 독립 상태 유지
+  \item 현재 프레임과 이전 평활 채널의 inner product 계산
+  \item inner product phase 변화로 \code{rot_rate} 계산
+  \item even-odd subcarrier pair로 SNR 추정
+  \item 특징값 EMA smoothing
+  \item 2D linear mapping으로 alpha 계산
+  \item 해당 alpha로 평활 채널 업데이트
+  \item 예외 상황에서 EWMA로 fallback
+\end{itemize}
+
+\code{SRS_2D_DEBUG=1}을 설정하면 다음 내부 상태를 로그로 확인할 수 있다.
+
+\begin{itemize}
+  \item alpha
+  \item smoothed \code{rot_rate}
+  \item smoothed SNR
+  \item frame count
+  \item fallback count
+\end{itemize}
+
+\subsection{A/B 수집과 완료 조건}
+
+현재 A/B 프레임워크는 다음을 지원한다.
+
+\begin{itemize}
+  \item 같은 설정에서 \code{ewma}와 \code{adaptive}를 각각 실행
+  \item method별 독립 sweep directory 출력
+  \item manifest에 각 SNR point의 상태 기록
+  \item \code{MIN_SRS_FRAMES}로 partial flush 오판 방지
+  \item v9에서 attach diagnostic state machine 제공
+\end{itemize}
+
+\subsection{UE attach 수정}
+
+\code{launch_all_v8.sh}와 \code{launch_all_v9.sh}에는 다음 옵션이 추가되어 있다.
+
+\begin{lstlisting}[language=bash]
+--ue-timing-correction-disable
+\end{lstlisting}
+
+이 수정은 dclcom61의 GPU-IPC/rfsim 조건에서 STO jitter로 인해 발생하던 UE attach 불안정을 해결한다.
+
+\subsection{온라인 평가 도구}
+
+\code{eval_pdpR_nmse.py}는 현재 다음 기능을 가진다.
+
+\begin{itemize}
+  \item SRS bin과 Sionna GT 로드
+  \item absolute slot 기반 frame pairing
+  \item 고정 STO correction 적용
+  \item raw NMSE, global LS NMSE, per-antenna LS NMSE 출력
+  \item 각 \code{(rx, tx)} 링크별 NMSE breakdown 출력
+\end{itemize}
+
+이제 온라인 OAI C 출력에 대해 더 안정적인 평가를 수행할 수 있다.
+
+\section{아직 완전히 끝나지 않은 부분}
+
+\subsection{수정 후 공정 A/B 결론은 아직 확정 전}
+
+2026년 5월 19일의 첫 A/B 결과는 최종 결론으로 보기 어렵다. 이유는 다음과 같다.
+
+\begin{itemize}
+  \item EWMA와 adaptive의 SRS frame 수가 같지 않았다.
+  \item 일부 결과는 partial flush에서 나온 데이터였다.
+  \item 오래된 평가 방식은 온라인 C 출력에 다시 Python EMA를 적용했다.
+  \item dclcom61 이전 후 UE attach 불안정 문제가 새로 확인되었다.
+\end{itemize}
+
+현재는 하위 문제들을 수정했지만, 최종 알고리즘 비교 결론은 안정화된 조건에서 다시 검증되어야 한다.
+
+\subsection{Adaptive alpha의 적용 범위}
+
+CDL 표준 모델 안에서는 \code{rot_rate + even-odd SNR} 2D mapping이 유효했다. 그러나 P1B ray-tracing 데이터에서는 perfect SNR을 넣어도 많은 RX 위치에서 실패했다.
+
+이는 P1B 같은 기하 기반 채널이 더 많은 물리 정보를 필요로 한다는 뜻이다. 예를 들어 다음 특징들이 필요할 수 있다.
+
+\begin{itemize}
+  \item delay spread
+  \item Doppler spectrum width
+  \item AoA/AoD spread
+  \item longer-lag temporal correlation
+  \item frequency correlation structure
+\end{itemize}
+
+따라서 adaptive alpha는 범용 최종 알고리즘이라기보다는, OAI 안에서 동작하는 온라인 adaptive baseline으로 보는 것이 정확하다.
+
+\subsection{진짜 2D MMSE는 아직 완성 전}
+
+현재 \code{2d-mmse} 이름 아래의 구현은 다음에 가깝다.
+
+\begin{itemize}
+  \item frequency domain: OAI legacy filt8/filt16 사용
+  \item time domain: EWMA 또는 adaptive EMA 사용
+\end{itemize}
+
+진정한 2D MMSE라면 다음 요소가 필요하다.
+
+\begin{itemize}
+  \item 고정 FIR을 대체하는 frequency-domain Wiener/MMSE interpolation
+  \item Doppler correlation을 이용한 time-domain Wiener/MMSE smoothing
+  \item 또는 joint time-frequency filtering
+  \item delay spread, Doppler, SNR 추정에 따른 parameterized filter selection
+\end{itemize}
+
+이 부분은 아직 최종 구현되지 않았다.
+
+\subsection{SRS STO / delay compensation 문제}
+
+\code{Change_log.md}에서 정리된 것처럼, SRS는 DMRS에 비해 중요한 delay compensation 경로가 부족하다.
+
+\begin{itemize}
+  \item DMRS에는 \code{nr_est_delay()}가 있다.
+  \item DMRS에는 \code{delay_table} 기반 phase compensation이 있다.
+  \item SRS 기본 경로에는 이에 대응하는 완전한 메커니즘이 없다.
+\end{itemize}
+
+이전에 시도한 내용은 다음과 같다.
+
+\begin{itemize}
+  \item integer delay compensation: 효과는 있었지만 일부만 해결했다.
+  \item DFT denoising: OAI int16 DFT overflow 때문에 실패했다.
+  \item cross-correlation delay estimation: 후속 검증 대상으로 남아 있다.
+\end{itemize}
+
+이 라인은 adaptive alpha보다 더 근본적인 SRS 채널 추정 문제에 가까울 수 있다.
+
+\section{현재 가장 중요한 실험 결론}
+
+\subsection{데이터 엔진 관점}
+
+OAI + Proxy + GT dump 조합은 연구를 지탱할 수 있는 수준까지 왔다. 그러나 타이밍에 매우 민감하다.
+
+\begin{itemize}
+  \item UE attach
+  \item SRS scheduling
+  \item GT/SRS slot pairing
+  \item STO correction
+  \item partial flush
+\end{itemize}
+
+이 문제들은 단순한 운영 이슈가 아니라, NMSE 결과의 신뢰도를 직접 결정한다.
+
+\subsection{Adaptive alpha 관점}
+
+CDL 범위에서는 다음이 확인되었다.
+
+\begin{itemize}
+  \item \code{rot_rate}는 Doppler를 효과적으로 감지한다.
+  \item even-odd pair SNR은 open-loop SNR 특징으로 쓸 수 있다.
+  \item 2D mapping은 1D \code{rot_rate}보다 SNR 변화에 더 잘 일반화된다.
+  \item Python prototype과 C 구현이 모두 존재한다.
+\end{itemize}
+
+P1B 범위에서는 다음이 확인되었다.
+
+\begin{itemize}
+  \item 두 개의 특징만으로는 부족하다.
+  \item perfect SNR을 넣어도 문제가 해결되지 않는다.
+  \item 문제는 SNR 추정이 더러워서가 아니라, 채널 물리를 설명하는 feature dimension이 부족하다는 점이다.
+\end{itemize}
+
+\subsection{OAI 온라인 평가 관점}
+
+온라인 C 출력은 오래된 \code{test_2d_mmse.py}로 직접 재필터링해 평가하면 안 된다. 현재 더 적절한 도구는 \code{eval_pdpR_nmse.py}이며, 다음 기준을 사용한다.
+
+\begin{itemize}
+  \item fixed STO correction
+  \item exact slot pairing
+  \item per-antenna LS alignment
+\end{itemize}
+
+\subsection{dclcom61 attach 문제}
+
+유효했던 최종 수정은 UE timing correction을 비활성화하는 것이다.
+
+\begin{lstlisting}[language=bash]
+--ue-timing-correction-disable
+\end{lstlisting}
+
+UE attach가 안정적이지 않으면 이후의 모든 A/B 결과가 control-plane instability에 의해 오염되므로, 이 수정은 전체 실험 체계에서 매우 중요하다.
+
+\section{현재 실제로 하고 있는 일}
+
+코드와 로그를 기준으로 보면, 현재 실제 작업은 다음과 같이 정리된다.
+
+\begin{enumerate}
+  \item SRS 채널 추정 향상 알고리즘을 Python에서 OAI C 코드로 옮기고 있다.
+  \item \code{ewma}와 \code{adaptive}를 실제 OAI 실행에서 전환할 수 있게 만들었다.
+  \item 실험 프레임워크를 수정해 false OK, partial flush, 잘못된 평가 기준을 줄이고 있다.
+  \item 새 서버 dclcom61에서 발생한 UE attach 불안정 문제를 해결했다.
+  \item 신뢰 가능한 EWMA/adaptive 비교가 가능한 기반을 만들고 있다.
+\end{enumerate}
+
+더 직관적으로 말하면 다음과 같다.
+
+\begin{quote}
+현재 작업은 AI를 바로 학습하는 단계가 아니라, AI 학습 전에 필요한 데이터 기반을 정리하는 단계이다. SRS 채널 추정과 GT 정렬이 신뢰할 수 없다면, 이후 특징 추출과 AI 모델 학습은 잘못된 데이터 위에 세워지게 된다.
+\end{quote}
+
+\section{요약}
+
+현재 프로젝트의 전체 진행 상태는 다음과 같이 이해할 수 있다.
+
+\begin{enumerate}
+  \item \textbf{플랫폼은 이미 동작한다.} OAI, Proxy, GT dump, SRS dump, sweep framework가 갖춰져 있다.
+  \item \textbf{알고리즘은 OAI 내부에 들어갔다.} EWMA와 adaptive alpha는 더 이상 Python-only가 아니라 gNB SRS 추정 경로에 연결되어 있다.
+  \item \textbf{평가 기준이 점점 신뢰 가능해지고 있다.} STO, per-antenna phase, partial flush 문제가 확인되고 반영되었다.
+  \item \textbf{새 서버의 핵심 불안정 원인은 해결되었다.} UE attach 문제는 STO timing correction jitter와 관련되어 있었고, 실행 인자로 수정되었다.
+  \item \textbf{공정 A/B 결론은 아직 최종 확정 전이다.} 이전 데이터는 frame count 불일치, attach instability, 평가 기준 문제의 영향을 받았다.
+  \item \textbf{단계 2는 아직 수렴 중이다.} Adaptive alpha는 현재 실행 가능한 프로토타입이며, 완전한 2D MMSE와 STO compensation은 아직 최종 완료되지 않았다.
+\end{enumerate}
+
+따라서 현재 가장 정확한 위치는 다음과 같다.
+
+\begin{quote}
+연구는 ``실행 가능성 확인'' 단계에서 ``채널 추정 알고리즘을 신뢰성 있게 비교할 수 있는가''를 확인하는 단계로 넘어왔다. 코드는 이미 온라인 실행과 A/B 검증이 가능한 수준에 도달했지만, 최종 알고리즘 결론은 안정화된 링크에서 검증 중인 상태이다.
+\end{quote}
+
+\end{document}

@@ -1,0 +1,102 @@
+[
+  {
+    "scenario": "A: Speed 3\u219230 km/h @ 10dB",
+    "params": {
+      "speed1": 3,
+      "speed2": 30,
+      "snr1": 10,
+      "snr2": 10
+    },
+    "oracle_alpha_seg2": 0.78093960720845,
+    "n_trials": 10,
+    "ibvss": {
+      "conv_frames_mean": 6.7,
+      "conv_frames_std": 4.148493702538308,
+      "transient_ratio_mean": 1.0060219870968994,
+      "final_alpha_mean": 0.7693026381472609,
+      "final_alpha_std": 0.01023347370251305
+    },
+    "kalman": {
+      "conv_frames_mean": 14.9,
+      "conv_frames_std": 6.847627326307997,
+      "transient_ratio_mean": 1.0323648519879225,
+      "final_alpha_mean": 0.7734385206556651,
+      "final_alpha_std": 0.009681334589315829
+    }
+  },
+  {
+    "scenario": "B: SNR 20\u21925 dB @ 3km/h",
+    "params": {
+      "speed1": 3,
+      "speed2": 3,
+      "snr1": 20,
+      "snr2": 5
+    },
+    "oracle_alpha_seg2": 0.26473952904802295,
+    "n_trials": 10,
+    "ibvss": {
+      "conv_frames_mean": 18.1,
+      "conv_frames_std": 13.678084661238211,
+      "transient_ratio_mean": 1.048050523174373,
+      "final_alpha_mean": 0.21795204403821447,
+      "final_alpha_std": 0.00608024279591759
+    },
+    "kalman": {
+      "conv_frames_mean": 20.9,
+      "conv_frames_std": 16.201543136380558,
+      "transient_ratio_mean": 1.080817341652013,
+      "final_alpha_mean": 0.21708186521947193,
+      "final_alpha_std": 0.006244798387223222
+    }
+  },
+  {
+    "scenario": "C: Speed 3\u219230 + SNR 20\u21925",
+    "params": {
+      "speed1": 3,
+      "speed2": 30,
+      "snr1": 20,
+      "snr2": 5
+    },
+    "oracle_alpha_seg2": 0.591305720499399,
+    "n_trials": 10,
+    "ibvss": {
+      "conv_frames_mean": 12.4,
+      "conv_frames_std": 6.1838499334961226,
+      "transient_ratio_mean": 1.0400319206871793,
+      "final_alpha_mean": 0.582207840810651,
+      "final_alpha_std": 0.012138659164925163
+    },
+    "kalman": {
+      "conv_frames_mean": 21.2,
+      "conv_frames_std": 9.96794863550169,
+      "transient_ratio_mean": 1.0709735740345194,
+      "final_alpha_mean": 0.5856538074789752,
+      "final_alpha_std": 0.012085753386378604
+    }
+  },
+  {
+    "scenario": "D: Speed 30\u21923 km/h @ 10dB",
+    "params": {
+      "speed1": 30,
+      "speed2": 3,
+      "snr1": 10,
+      "snr2": 10
+    },
+    "oracle_alpha_seg2": 0.3719373553072642,
+    "n_trials": 10,
+    "ibvss": {
+      "conv_frames_mean": 15.9,
+      "conv_frames_std": 2.5475478405713994,
+      "transient_ratio_mean": 1.0065940748344526,
+      "final_alpha_mean": 0.3069201304670699,
+      "final_alpha_std": 0.018381429220134936
+    },
+    "kalman": {
+      "conv_frames_mean": 23.1,
+      "conv_frames_std": 3.448187929913334,
+      "transient_ratio_mean": 1.0310479452270198,
+      "final_alpha_mean": 0.3105265660420426,
+      "final_alpha_std": 0.02083419005066971
+    }
+  }
+]

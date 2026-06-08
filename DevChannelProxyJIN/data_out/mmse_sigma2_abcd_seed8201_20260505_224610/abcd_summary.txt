@@ -1,0 +1,16 @@
+MMSE sigma2 A/B/C/D summary
+===========================
+seed=8201
+snr=10 dB
+fixed_N=30
+denoise=sto
+anchor_slot_signature=8
+
+| Case | trim | cap | floor | clip | raw_srs | paired | N_used | NMSE(dB) | RSRPerr(dB) | PDP |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| A | 0 | 2.0 | 1e-4 | 6.0 | 82 | 82 | 30 | -4.06 | 1.46 | 0.9891 |
+| B | 0 | 1.0 | 1e-4 | 6.0 | 69 | 69 | 30 | +23.81 | 24.11 | 0.1071 |
+| C | 0 | 0.5 | 1e-4 | 6.0 | 82 | 82 | 30 | +26.09 | 26.49 | 0.1556 |
+| D | 0 | 1.0 | 1e-3 | 6.0 | 80 | 80 | 30 | +28.88 | 29.22 | 0.0501 |
+
+Best by NMSE: Case A (NMSE=-4.06 dB, RSRPerr=1.46 dB, PDP=0.9891)

@@ -1,0 +1,54 @@
+# Python virtual environments
+.venv/
+venv_lu/
+venv/
+__pycache__/
+*.pyc
+
+# Large data files
+*.npy
+*.bin
+*.so
+*.so.*
+*.a
+*.o
+
+# Build artifacts
+cmake_targets/ran_build/
+build/
+
+# Logs (go to S3, do NOT push to GitHub)
+DevChannelProxyJIN/logs/
+*.log
+
+# IDE / Editor
+.vscode/
+.cursor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# openairinterface5g_whan is managed as a git submodule
+
+# === Experiment outputs & large artifacts (go to S3) ===
+DevChannelProxyJIN/vRAN_Socket/data_out/
+DevChannelProxyJIN/vRAN_Socket/cfr_results/
+DevChannelProxyJIN/vRAN_Socket/saved_rays_data/
+DevChannelProxyJIN/vRAN_Socket/**/*.npy
+DevChannelProxyJIN/vRAN_Socket/**/*.npz
+DevChannelProxyJIN/vRAN_Socket/**/*.h5
+DevChannelProxyJIN/vRAN_Socket/**/*.mat
+DevChannelProxyJIN/vRAN_Socket/**/*.pkl
+# Images: uncomment next line if you don't want figures in the repo
+# DevChannelProxyJIN/vRAN_Socket/**/*.png
+
+# AWS / secrets — NEVER commit these
+*.pem
+*.key
+.aws/
+.env
+.env.*
+!.env.example
+aws_credentials*
+

@@ -1,0 +1,170 @@
+#!/bin/bash
+# preflight.sh — OAI sweep pre-flight check + auto-cleanup
+#
+# 用途:每次跑 sweep 之前跑一次。检查 host 进程残留、容器内 zombie、
+#       shm 残留、ext-dn iperf3 server、5GC 容器健康度,有问题就自动修。
+#
+# 用法:
+#   bash preflight.sh                     # 普通跑(逐项打印 + auto-fix)
+#   bash preflight.sh && bash sweep.sh    # 干净后才跑 sweep
+#
+# 退出码:
+#   0  全干净(可能经过自动修复)
+#   1  有问题没修好(需要人工查)
+#
+# 跟 launch_all 的关系:
+#   launch_all_v8.sh 在 cleanup() 里 pkill -9 主进程,但 sionna-proxy 容器
+#   内的 multiprocessing 子进程被孤立后变 zombie。每跑一次 sweep 累积
+#   ~3-10 个 zombie,日积月累把 sionna-proxy 弄到不响应。
+#   长期解法是给 launch_all 加 graceful SIGTERM 路径;短期靠这个脚本
+#   每次 preflight 自动 docker restart 来清。
+
+set -u
+
+# Parse args
+INSIDE_SWEEP=0
+for arg in "$@"; do
+    case "$arg" in
+        --inside-sweep) INSIDE_SWEEP=1 ;;
+        -h|--help)
+            cat <<EOF
+preflight.sh — OAI sweep pre-flight check + auto-cleanup
+Options:
+  --inside-sweep  Skip host-process check (called from inside a running sweep
+                  to avoid fratricide; only cleans zombies, shm, ext-dn).
+EOF
+            exit 0 ;;
+    esac
+done
+
+dirty=0
+
+# ── 1. host 进程(skip when called from inside a sweep) ─────────
+echo "─[1] host 进程 ─"
+if [ $INSIDE_SWEEP -eq 1 ]; then
+    echo "  ⊘ skipped (inside-sweep mode — would kill the running sweep itself)"
+elif ps -ef | grep -E "launch_all|nr-softmodem|nr-uesoftmodem|run_q4_snr_sweep" | grep -v grep > /dev/null; then
+    echo "  脏! 列表:"
+    ps -ef | grep -E "launch_all|nr-softmodem|nr-uesoftmodem|run_q4_snr_sweep" | grep -v grep | awk '{printf "    PID %s  age=%s  CMD=%s\n", $2, $5, substr($0, index($0,$8))}' | head -10
+    echo "  → pkill -9 ..."
+    sudo pkill -9 -f launch_all 2>/dev/null
+    sudo pkill -9 -f nr-softmodem 2>/dev/null
+    sudo pkill -9 -f nr-uesoftmodem 2>/dev/null
+    sudo pkill -9 -f run_q4_snr_sweep 2>/dev/null
+    dirty=1
+else
+    echo "  ✓ 干净"
+fi
+
+# ── 2. sionna-proxy 容器 zombie + active python ────────────────
+echo "─[2] sionna-proxy 容器内 ─"
+zc=$(sudo docker exec sionna-proxy ps -ef 2>/dev/null | grep -c "<defunct>")
+actv=$(sudo docker exec sionna-proxy ps -ef 2>/dev/null | grep -E "v[0-9]\.py|multiprocessing" | grep -v "<defunct>" | grep -v grep | wc -l)
+if [ "$zc" -gt 0 ] || [ "$actv" -gt 0 ]; then
+    echo "  脏! zombie=${zc}  active_python=${actv}"
+    echo "  → docker restart sionna-proxy ..."
+    sudo docker restart sionna-proxy >/dev/null
+    dirty=1
+else
+    echo "  ✓ 干净"
+fi
+
+# ── 3. /tmp/oai_gpu_ipc shm ────────────────────────────────────
+echo "─[3] /tmp/oai_gpu_ipc shm ─"
+if [ -n "$(sudo ls /tmp/oai_gpu_ipc/ 2>/dev/null)" ]; then
+    echo "  脏! 内容:"
+    sudo ls -la /tmp/oai_gpu_ipc/ 2>/dev/null | head -8
+    echo "  → rm -rf ..."
+    sudo rm -rf /tmp/oai_gpu_ipc/*
+    dirty=1
+else
+    echo "  ✓ 干净"
+fi
+
+# ── 4. oai-ext-dn 容器自带的 iperf3 server ────────────────────
+echo "─[4] oai-ext-dn iperf3 server ─"
+if ! sudo docker exec oai-ext-dn pgrep -f "iperf3 -s" >/dev/null 2>&1; then
+    echo "  脏! iperf3 server 不在(可能之前被误杀)"
+    echo "  → docker restart oai-ext-dn ..."
+    sudo docker restart oai-ext-dn >/dev/null
+    sleep 5
+    dirty=1
+else
+    iperf_pid=$(sudo docker exec oai-ext-dn pgrep -f "iperf3 -s")
+    echo "  ✓ 干净 (PID $iperf_pid)"
+fi
+
+# ── 5. 5GC 强制重启 (清除 AMF/SMF 残留 NAS 状态) ─────────────
+echo "─[5] 5GC 重启 (清除 NAS 残留状态) ─"
+CN5G_COMPOSE="/home/dclcom61/OAI_luuuuuu/DevChannelProxyJIN/openairinterface5g_whan/doc/tutorial_resources/oai-cn5g/docker-compose.yaml"
+if [ -f "$CN5G_COMPOSE" ]; then
+    echo "  → docker compose down + up (强制清除 AMF/SMF 内部状态)..."
+    sudo docker compose -f "$CN5G_COMPOSE" down 2>/dev/null || true
+    sleep 3
+    sudo docker compose -f "$CN5G_COMPOSE" up -d 2>/dev/null || true
+    echo "  → 等 30s 让 5GC (含 MySQL) 稳定..."
+    sleep 30
+    dirty=1
+
+    # 核实所有容器都 Up
+    expected=("oai-amf" "oai-smf" "oai-upf" "oai-ext-dn" "oai-nrf" "oai-udm" "oai-ausf" "oai-udr" "mysql" "sionna-proxy")
+    unhealthy=""
+    for c in "${expected[@]}"; do
+        status=$(sudo docker ps --format '{{.Names}}\t{{.Status}}' | awk -v c="$c" '$1==c{$1=""; sub(/^ /,""); print}')
+        if [ -z "$status" ]; then
+            unhealthy+="${c}(missing) "
+        elif [[ "$status" != Up* ]]; then
+            unhealthy+="${c}(${status}) "
+        fi
+    done
+    if [ -n "$unhealthy" ]; then
+        echo "  脏! 重启后仍有问题: $unhealthy"
+    else
+        echo "  ✓ 5GC 重启完成, 10 个容器全 Up"
+    fi
+else
+    echo "  ⚠ docker-compose.yaml 未找到, 跳过 5GC 重启"
+    echo "  → 检查容器状态..."
+    expected=("oai-amf" "oai-smf" "oai-upf" "oai-ext-dn" "oai-nrf" "oai-udm" "oai-ausf" "oai-udr" "mysql" "sionna-proxy")
+    unhealthy=""
+    for c in "${expected[@]}"; do
+        status=$(sudo docker ps --format '{{.Names}}\t{{.Status}}' | awk -v c="$c" '$1==c{$1=""; sub(/^ /,""); print}')
+        if [ -z "$status" ]; then
+            unhealthy+="${c}(missing) "
+        elif [[ "$status" != Up* ]]; then
+            unhealthy+="${c}(${status}) "
+        fi
+    done
+    if [ -n "$unhealthy" ]; then
+        echo "  脏! $unhealthy"
+        dirty=1
+    else
+        echo "  ✓ 10 个容器全 Up"
+    fi
+fi
+
+# ── 收尾 ───────────────────────────────────────────────────────
+echo ""
+if [ $dirty -eq 1 ]; then
+    echo "[preflight] 🛠 已自动修复 — 等 5s 让一切稳定..."
+    sleep 5
+    # 简化最终核对
+    if [ $INSIDE_SWEEP -eq 1 ]; then
+        h=0  # inside-sweep 时不检查 host 进程 (自己就在里面)
+    else
+        h=$(ps -ef | grep -E "launch_all|nr-softmodem|nr-uesoftmodem" | grep -v grep | wc -l)
+    fi
+    z=$(sudo docker exec sionna-proxy ps -ef 2>/dev/null | grep -c "<defunct>")
+    i=$(sudo docker exec oai-ext-dn pgrep -f "iperf3 -s" 2>/dev/null | wc -l)
+    echo "[preflight] 最终核对:host=$h  zombie=$z  iperf3=$i  (inside_sweep=$INSIDE_SWEEP)"
+    if [ $h -eq 0 ] && [ $z -eq 0 ] && [ $i -ge 1 ]; then
+        echo "[preflight] ✅ 全干净,可以跑"
+        exit 0
+    else
+        echo "[preflight] ❌ 还有问题,人工查"
+        exit 1
+    fi
+else
+    echo "[preflight] ✅ 全干净,可以跑 sweep"
+    exit 0
+fi

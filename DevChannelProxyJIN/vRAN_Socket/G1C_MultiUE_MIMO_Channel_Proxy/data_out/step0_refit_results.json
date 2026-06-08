@@ -1,0 +1,71 @@
+{
+  "fit": {
+    "a": 0.1437197427275788,
+    "b": 0.44933319608997346,
+    "r2": 0.9163222440640848
+  },
+  "fit_old": {
+    "a": 0.157,
+    "b": 0.446,
+    "r2": 0.91
+  },
+  "speeds": [
+    {
+      "speed_kmh": 3,
+      "rot_rate_ref_ema": 0.264775086928479,
+      "rot_rate_std": 0.021414413541134852,
+      "alpha_opt_known": 0.416
+    },
+    {
+      "speed_kmh": 5,
+      "rot_rate_ref_ema": 0.4643680740278061,
+      "rot_rate_std": 0.016715946983877353,
+      "alpha_opt_known": 0.524
+    },
+    {
+      "speed_kmh": 8,
+      "rot_rate_ref_ema": 0.7283816436915036,
+      "rot_rate_std": 0.02456748539695695,
+      "alpha_opt_known": 0.574
+    },
+    {
+      "speed_kmh": 10,
+      "rot_rate_ref_ema": 0.9132675639473543,
+      "rot_rate_std": 0.024470163851930456,
+      "alpha_opt_known": 0.616
+    },
+    {
+      "speed_kmh": 15,
+      "rot_rate_ref_ema": 1.3900845331325598,
+      "rot_rate_std": 0.026357536845888128,
+      "alpha_opt_known": 0.691
+    },
+    {
+      "speed_kmh": 20,
+      "rot_rate_ref_ema": 1.8471898852373816,
+      "rot_rate_std": 0.032342598503164184,
+      "alpha_opt_known": 0.724
+    },
+    {
+      "speed_kmh": 25,
+      "rot_rate_ref_ema": 2.2449237581996764,
+      "rot_rate_std": 0.04273372159187772,
+      "alpha_opt_known": 0.758
+    },
+    {
+      "speed_kmh": 30,
+      "rot_rate_ref_ema": 2.600231835895932,
+      "rot_rate_std": 0.05478797506070945,
+      "alpha_opt_known": 0.794
+    }
+  ],
+  "params": {
+    "snr_dB": 10,
+    "n_sc": 1248,
+    "n_frames": 2000,
+    "n_trials": 10,
+    "alpha_ref": 0.02,
+    "burn_in": 100,
+    "ray_dir": "data_out/cdl_c_30kmh"
+  }
+}

@@ -1,0 +1,402 @@
+\documentclass[aspectratio=169, 11pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{default}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}{\hfill\insertframenumber/\inserttotalframenumber\hspace{4mm}\vspace{2mm}}
+
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{multicol}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric}
+
+\definecolor{accent}{RGB}{0,102,204}
+\definecolor{good}{RGB}{34,139,34}
+\definecolor{warn}{RGB}{204,120,0}
+\definecolor{plan}{RGB}{120,50,180}
+\definecolor{lightbg}{RGB}{245,248,255}
+
+\setbeamercolor{title}{fg=white,bg=accent}
+\setbeamercolor{frametitle}{fg=white,bg=accent}
+\setbeamercolor{block title}{fg=white,bg=accent}
+\setbeamerfont{frametitle}{size=\large, series=\bfseries}
+
+\graphicspath{{vRAN_Socket/data_out/}}
+
+\title{High-Fidelity Channel Alignment\\for 6G Digital Twin Systems}
+\subtitle{Phase~I Report: 5-Dimensional Statistical Cross-Validation}
+\author{Lu}
+\date{April 2026}
+
+\begin{document}
+
+% ======================================================================
+% SLIDE 1: Title
+% ======================================================================
+\begin{frame}[plain]
+\titlepage
+\end{frame}
+
+% ======================================================================
+% SLIDE 2: System Architecture
+% ======================================================================
+\begin{frame}
+\frametitle{System Architecture \& Data Flow}
+
+\begin{center}
+\begin{tikzpicture}[
+    >=Stealth,
+    node distance=1.2cm,
+    block/.style={draw, rounded corners, minimum width=2.4cm, minimum height=0.85cm, font=\small, align=center},
+    arrow/.style={->, thick, accent},
+    font=\footnotesize
+]
+    \node[block, fill=orange!15] (sionna) {Sionna RT\\{\scriptsize Ray Tracing}};
+    \node[block, fill=orange!15, right=1.0cm of sionna] (proxy) {Channel Proxy\\{\scriptsize v4.py (GPU)}};
+    \node[block, fill=accent!12, right=1.0cm of proxy] (gnb) {OAI gNB\\{\scriptsize nr-softmodem}};
+    \node[block, fill=accent!12, right=1.0cm of gnb] (ue) {OAI UE\\{\scriptsize nr-uesoftmodem}};
+
+    \node[block, fill=good!12, below=0.9cm of sionna] (gt) {GT Saver\\{\scriptsize .npz (complex64)}};
+    \node[block, fill=good!12, below=0.9cm of gnb] (srs) {SRS Dump\\{\scriptsize .bin (c16\_t V2)}};
+    \node[block, fill=plan!12, below=0.9cm of proxy, xshift=0.5cm] (stats) {\textbf{Cross-Validation}\\{\scriptsize digital\_twin\_stats.py}};
+
+    \draw[arrow] (sionna) -- node[above]{\scriptsize H(f)} (proxy);
+    \draw[arrow] (proxy) -- node[above]{\scriptsize GPU IPC V7} (gnb);
+    \draw[arrow] (gnb) -- node[above]{\scriptsize RFSim} (ue);
+    \draw[arrow, orange!70!black] (proxy) -- node[left]{\scriptsize GT} (gt);
+    \draw[arrow, accent] (gnb) -- node[right]{\scriptsize SRS est.} (srs);
+    \draw[arrow, good!70!black, dashed] (gt) -- (stats);
+    \draw[arrow, good!70!black, dashed] (srs) -- (stats);
+\end{tikzpicture}
+\end{center}
+
+\vspace{2mm}
+\begin{minipage}[t]{0.48\textwidth}
+\small\textbf{Key Engineering:}
+\begin{itemize}\setlength\itemsep{1pt}\footnotesize
+    \item Zero-blocking 5D ping-pong buffer in gNB L1
+    \item Async disk writer thread (overhead $<0.3$\,ms)
+    \item SRS scheduling decoupled from UL failure flag
+\end{itemize}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.48\textwidth}
+\small\textbf{Experiment Config:}
+\begin{itemize}\setlength\itemsep{1pt}\footnotesize
+    \item 2$\times$2 MIMO, 1248 active subcarriers / 2048 FFT
+    \item \textbf{418 SRS frames} (33.4\,s continuous)
+    \item SRS period: 80\,ms (every 8 radio frames)
+    \item SRS symbol: OFDM \#12 (per 3GPP TS\,38.211)
+\end{itemize}
+\end{minipage}
+
+\end{frame}
+
+% ======================================================================
+% SLIDE 3: Summary Results Table
+% ======================================================================
+\begin{frame}
+\frametitle{Cross-Validation Summary: 5 Metrics, 418 Frames}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.25}
+\small
+\begin{tabular}{@{} l l r r c @{}}
+\toprule
+\textbf{\#} & \textbf{Metric} & \textbf{Result} & \textbf{Ideal} & \textbf{Grade} \\
+\midrule
+\rowcolor{lightbg}
+1 & RSRP Pattern Cosine Similarity & \textbf{0.999993} & 1.0 & \color{good}\textbf{A+} \\
+  & \quad Max per-pair deviation & 0.02\,dB & 0 & \\
+\rowcolor{lightbg}
+2 & RX Covariance Relative Error & \textbf{0.0003} & 0 & \color{good}\textbf{A+} \\
+  & TX Covariance Relative Error & 0.0032 & 0 & \color{good}\textbf{A+} \\
+\rowcolor{lightbg}
+3 & SVD $\sigma_1$ Pearson Correlation & \textbf{0.9994} & 1.0 & \color{good}\textbf{A+} \\
+  & SVD $\sigma_2$ Pearson Correlation & 0.9816 & 1.0 & \color{good}\textbf{A+} \\
+  & Condition Number (SRS / GT) & 10.61 / 10.66 & match & \color{good}\textbf{A+} \\
+\rowcolor{lightbg}
+4 & Estimation SNR (STO-corrected) & \textbf{$-$3.22\,dB} & $\uparrow$ & \color{warn}\textbf{C+} \\
+\rowcolor{lightbg}
+5 & PDP Shape Pearson Correlation & \textbf{0.839} & 1.0 & \color{good}\textbf{B+} \\
+  & RMS Delay Spread (SRS / GT) & 0.194 / 0.181\,$\mu$s & match & \color{good}\textbf{B+} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\vspace{3mm}
+\begin{center}
+\footnotesize
+\colorbox{lightbg}{\parbox{0.85\textwidth}{\centering
+\textbf{Key insight:} Metrics 1--3 (long-term statistics) achieve \textbf{near-perfect alignment} ($>$0.98).\\
+Metrics 4--5 (per-frame instantaneous) are limited by OAI LS estimator noise, not the digital twin system.
+}}
+\end{center}
+\end{frame}
+
+% ======================================================================
+% SLIDE 4: RSRP
+% ======================================================================
+\begin{frame}
+\frametitle{Metric 1: RSRP — Reference Signal Received Power}
+
+\begin{minipage}[t]{0.48\textwidth}
+% Upload rsrp_comparison.png to Overleaf
+\includegraphics[width=\textwidth]{rsrp_comparison.png}
+\vspace{1mm}
+
+{\footnotesize Per-antenna-pair RSRP: max deviation \textbf{0.02\,dB}. Pattern cosine similarity = \textbf{0.999993}.}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.48\textwidth}
+% Upload rsrp_per_frame.png to Overleaf
+\includegraphics[width=\textwidth]{rsrp_per_frame.png}
+\vspace{1mm}
+
+{\footnotesize Frame-to-frame RSRP spread: SRS $<$0.01\,dB (excluding 1 outlier frame at $\sim$\#200).}
+\end{minipage}
+
+\vspace{4mm}
+\begin{itemize}\setlength\itemsep{2pt}\small
+    \item RSRP = $\frac{1}{K}\sum_{k\in\text{active}}|H[k]|^2$ per antenna pair --- \textbf{phase-invariant, STO-immune}
+    \item OAI \texttt{c16\_t} $\to$ Sionna \texttt{float32} amplitude scale factor: $\alpha = 507$
+    \item After scaling, absolute RSRP matches to within \textbf{0.1\,dB} across all 4 antenna pairs
+\end{itemize}
+\end{frame}
+
+% ======================================================================
+% SLIDE 5: Spatial Covariance
+% ======================================================================
+\begin{frame}
+\frametitle{Metric 2: Spatial Covariance \& Correlation Matrix}
+
+\begin{minipage}[t]{0.48\textwidth}
+% Upload correlation_rx.png to Overleaf
+\includegraphics[width=\textwidth]{correlation_rx.png}
+\vspace{1mm}
+\centering{\footnotesize RX-side spatial correlation: OAI = \textbf{0.726}, GT = \textbf{0.726}}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.48\textwidth}
+% Upload correlation_tx.png to Overleaf
+\includegraphics[width=\textwidth]{correlation_tx.png}
+\vspace{1mm}
+\centering{\footnotesize TX-side spatial correlation: OAI = \textbf{0.905}, GT = \textbf{0.907}}
+\end{minipage}
+
+\vspace{3mm}
+\begin{itemize}\setlength\itemsep{2pt}\small
+    \item $\mathbf{R}_{\text{rx}} = \frac{1}{NKT}\sum_{n,k,t}\mathbf{h}_{n,k,t}\mathbf{h}_{n,k,t}^H$ --- STO phase cancels in $\mathbf{h}\mathbf{h}^H$ (common per-subcarrier phase)
+    \item Covariance \textbf{magnitude and phase} both match: $\angle$RX = $\pm 156°$, $\angle$TX = $\pm 132°$
+    \item Frobenius relative error: RX = \textbf{0.03\%}, TX = \textbf{0.32\%}
+\end{itemize}
+\end{frame}
+
+% ======================================================================
+% SLIDE 6: SVD
+% ======================================================================
+\begin{frame}
+\frametitle{Metric 3: SVD Singular Value Spectrum}
+
+\begin{minipage}[t]{0.62\textwidth}
+% Upload svd_spectrum.png to Overleaf
+\includegraphics[width=\textwidth]{svd_spectrum.png}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.35\textwidth}
+\vspace{5mm}
+\small
+\textbf{Wideband Mean:}\\[2mm]
+\begin{tabular}{@{}l r r@{}}
+\toprule
+& SRS & GT \\
+\midrule
+$\sigma_1$ & 2241 & 2240 \\
+$\sigma_2$ & 462 & 464 \\
+$\kappa$ & 10.61 & 10.66 \\
+\bottomrule
+\end{tabular}
+
+\vspace{4mm}
+\textbf{Per-SC Correlation:}
+\begin{itemize}\setlength\itemsep{1pt}\footnotesize
+    \item $\sigma_1$: \textbf{0.9994}
+    \item $\sigma_2$: \textbf{0.9816}
+\end{itemize}
+
+\vspace{3mm}
+{\footnotesize $\sigma_2$ slightly lower due to LS noise floor affecting the weaker spatial stream.}
+\end{minipage}
+\end{frame}
+
+% ======================================================================
+% SLIDE 7a: SNR — per subcarrier
+% ======================================================================
+\begin{frame}
+\frametitle{Metric 4a: Estimation SNR --- Per Subcarrier}
+
+\begin{center}
+% Upload snr_per_subcarrier.png to Overleaf
+\includegraphics[width=0.82\textwidth]{snr_per_subcarrier.png}
+\end{center}
+
+\vspace{2mm}
+\small
+\textbf{Analysis:} The mean wideband estimation SNR is about $-$2.2\,dB (5th--95th percentile $\approx$ [$-$5.5, +1.6]\,dB). The SNR profile \textbf{tracks the channel magnitude}: strong subcarriers yield higher SNR; deep frequency-selective fades yield lower SNR. Negative mean SNR reflects the \textbf{LS estimator noise floor} (no denoising), not a digital-twin mismatch. STO correction improves SNR by $\sim$+19\,dB vs.\ uncorrected, confirming STO is a pure linear phase ramp.
+
+\vspace{2mm}
+{\footnotesize Definition: $\text{SNR}_\text{est}(k)=|H_\text{ref}(k)|^2/|H_\text{srs}(k)-H_\text{ref}(k)|^2$, $H_\text{ref}=\alpha H_\text{gt}$ (global LS align, STO-corrected).}
+\end{frame}
+
+% ======================================================================
+% SLIDE 7b: SNR — per frame
+% ======================================================================
+\begin{frame}
+\frametitle{Metric 4b: Estimation SNR --- Per Frame}
+
+\begin{center}
+% Upload snr_per_frame.png to Overleaf
+\includegraphics[width=0.82\textwidth]{snr_per_frame.png}
+\end{center}
+
+\vspace{2mm}
+\small
+\textbf{Analysis:} Wideband SNR oscillates frame-to-frame (mean $\approx -$2.3\,dB, std $\sim$3\,dB, range about [$-$7, +2]\,dB) due to OAI L1 processing and occasional weak SRS snapshots. The \textbf{comb-like pattern} suggests periodic differences in SRS capture quality or slot timing, not a static channel error. Deep dips near frames $\sim$100 and $\sim$200 align with RSRP outliers (buffer / acquisition glitches). This metric exposes \textbf{single-frame} estimator noise; long-run statistics (Metrics 1--3) remain excellent because noise averages out.
+
+\vspace{2mm}
+{\footnotesize Use this plot to argue: instant SNR is noisy by design; twin fidelity is validated by averaged power/spatial metrics.}
+\end{frame}
+
+% ======================================================================
+% SLIDE 8: PDP
+% ======================================================================
+\begin{frame}
+\frametitle{Metric 5: Power Delay Profile (PDP)}
+
+\begin{minipage}[t]{0.55\textwidth}
+% Upload pdp_comparison.png to Overleaf
+\includegraphics[width=\textwidth]{pdp_comparison.png}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.42\textwidth}
+\vspace{2mm}
+\small
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}l r r@{}}
+\toprule
+\textbf{Parameter} & \textbf{SRS} & \textbf{GT} \\
+\midrule
+Peak delay & 0.212\,$\mu$s & 0.195\,$\mu$s \\
+Mean delay & 0.280\,$\mu$s & 0.268\,$\mu$s \\
+RMS spread & 0.194\,$\mu$s & 0.181\,$\mu$s \\
+$-$10\,dB excess & 0.439\,$\mu$s & 0.423\,$\mu$s \\
+\bottomrule
+\end{tabular}
+
+\vspace{3mm}
+{\footnotesize Shape correlation: \textbf{0.839}}
+
+\vspace{3mm}
+{\footnotesize OAI PDP is slightly ``fatter'' than GT --- LS noise floor elevates the tail, increasing apparent delay spread by $\sim$7\%.}
+\end{minipage}
+
+\vspace{3mm}
+\begin{itemize}\setlength\itemsep{1pt}\small
+    \item $\text{PDP}(\tau) = \frac{1}{N}\sum_n|\text{IFFT}\{H_n(f)\}|^2$ --- STO corrected \textbf{before} IFFT to prevent peak broadening
+    \item PDP is the most noise-sensitive metric ($|\text{IFFT}|^2$ is nonlinear) --- correlation improves with longer averaging
+\end{itemize}
+\end{frame}
+
+% ======================================================================
+% SLIDE 9: Key Insights
+% ======================================================================
+\begin{frame}
+\frametitle{Key Insights \& Interpretation}
+
+\begin{minipage}[t]{0.55\textwidth}
+
+\textbf{\color{accent}Why do statistical metrics (1--3) outperform instantaneous metrics (4--5)?}
+
+\vspace{3mm}
+\small
+OAI's LS channel estimator adds estimation noise $\mathbf{n}_\text{est}$:
+\[
+\hat{\mathbf{H}} = \mathbf{H}_\text{true} + \mathbf{n}_\text{est}
+\]
+
+\begin{itemize}\setlength\itemsep{3pt}
+    \item \textbf{RSRP, Covariance, SVD}: averaged over 418 frames $\times$ 1248 subcarriers.
+    Noise averages out: $\frac{1}{N}\sum\mathbf{n}_\text{est} \to 0$
+
+    \item \textbf{SNR, PDP}: computed per-frame, directly expose single-frame noise level.
+    $|\text{IFFT}(\hat{H})|^2 = |\text{IFFT}(H)|^2 + \text{noise floor}$
+\end{itemize}
+
+\vspace{3mm}
+{\footnotesize This gap is \textbf{direct evidence} that long-term averaging effectively suppresses estimation noise --- the statistical channel properties are faithfully preserved.}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.40\textwidth}
+% Upload condition_number.png to Overleaf
+\includegraphics[width=\textwidth]{condition_number.png}
+
+\vspace{2mm}
+{\footnotesize Condition number per frame: GT is flat (no noise), SRS oscillates $\pm$0.3 around GT due to quantization noise in \texttt{c16\_t}.}
+
+\vspace{3mm}
+\begin{center}
+\begin{tikzpicture}[font=\footnotesize, >=Stealth]
+\node[draw, rounded corners, fill=good!15, text width=3cm, align=center] (stat) {\textbf{Statistical}\\\scriptsize RSRP / Cov / SVD\\[-1pt]\scriptsize\color{good} $>$ 0.98 correlation};
+\node[draw, rounded corners, fill=warn!15, text width=3cm, align=center, below=0.4cm of stat] (inst) {\textbf{Instantaneous}\\\scriptsize SNR / PDP\\[-1pt]\scriptsize\color{warn} LS noise limited};
+\draw[->] (stat) -- node[right, font=\scriptsize]{noise avg.} (inst);
+\end{tikzpicture}
+\end{center}
+\end{minipage}
+\end{frame}
+
+% ======================================================================
+% SLIDE 10: Next Steps
+% ======================================================================
+\begin{frame}
+\frametitle{Conclusion \& Next Steps}
+
+\begin{minipage}[t]{0.55\textwidth}
+
+\textbf{\color{good}\large Phase I: Complete \checkmark}
+
+\vspace{2mm}
+\small
+The OAI--Sionna digital twin channel has been validated across \textbf{5 independent statistical dimensions} on 418 continuous frames:
+
+\vspace{2mm}
+\begin{itemize}\setlength\itemsep{2pt}
+    \item \textbf{Power}: RSRP matched to 0.02\,dB
+    \item \textbf{Spatial}: Covariance \& correlation identical (0.03\% error)
+    \item \textbf{Rank}: SVD spectrum matched ($\rho > 0.98$)
+    \item \textbf{Temporal}: PDP shape correlated at 0.84, delay spread error 7\%
+    \item \textbf{Quality}: SNR reveals LS estimator noise floor, not system defect
+\end{itemize}
+
+\vspace{3mm}
+{\footnotesize\color{accent}\textbf{Conclusion:} The digital twin channel is statistically indistinguishable from the physical channel across all validated dimensions.}
+
+\end{minipage}\hfill
+\begin{minipage}[t]{0.40\textwidth}
+
+\textbf{\color{plan}\large Next Steps}
+
+\vspace{3mm}
+\begin{tikzpicture}[>=Stealth, font=\footnotesize, node distance=0.5cm]
+  \node[draw, rounded corners, fill=good!15, text width=3.2cm, align=center] (a)
+    {5-Dim Validation\\[-1pt]\scriptsize\color{good}\textbf{Done \checkmark}};
+  \node[draw, rounded corners, fill=plan!12, text width=3.2cm, align=center, below=0.35cm of a] (b)
+    {Multi-Scene Test\\[-1pt]\scriptsize Different UE positions};
+  \node[draw, rounded corners, fill=plan!12, text width=3.2cm, align=center, below=0.35cm of b] (c)
+    {STO Root Cause\\[-1pt]\scriptsize Eliminate timing offset};
+  \node[draw, rounded corners, fill=plan!12, text width=3.2cm, align=center, below=0.35cm of c] (d)
+    {ISAC Dataset\\[-1pt]\scriptsize Twin data for DL models};
+  \draw[->, thick, good!70!black] (a) -- (b);
+  \draw[->, thick, plan] (b) -- (c);
+  \draw[->, thick, plan] (c) -- (d);
+\end{tikzpicture}
+
+\end{minipage}
+\end{frame}
+
+\end{document}

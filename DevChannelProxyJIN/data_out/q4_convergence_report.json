@@ -1,0 +1,125 @@
+{
+  "fixed_N_for_SNR_sweep": 100,
+  "plot_dir": "/home/dclcom57/OAI_luuuuuu/DevChannelProxyJIN/data_out",
+  "config": {
+    "align_mode": "slot",
+    "align_tol_slots": 20,
+    "agc_mode": "none",
+    "agc_beta": 0.95,
+    "pfa": null,
+    "tag_suffix": ""
+  },
+  "N_axis": {
+    "source_run": "/home/dclcom57/OAI_luuuuuu/DevChannelProxyJIN/logs/optfilt_test_20260512_2120/legacy_filt/snr_20dB",
+    "meta": {
+      "run_dir": "/home/dclcom57/OAI_luuuuuu/DevChannelProxyJIN/logs/optfilt_test_20260512_2120/legacy_filt/snr_20dB",
+      "align_mode": "slot",
+      "tol_slots": 20,
+      "n_srs_raw": 9,
+      "n_gt_raw": 11573,
+      "n_pairs": 9,
+      "n_common": 9,
+      "median_gap_slots": 2,
+      "n_rx": 2,
+      "n_tx": 2,
+      "n_sc": 2048
+    },
+    "n_active_sc": 1248,
+    "n_sc": 2048,
+    "sto_slope": -0.0013177252273446657,
+    "scale": 238.60779051804766,
+    "agc": {
+      "mode": "none"
+    },
+    "pfa": null,
+    "denoise": "sto",
+    "points": [
+      {
+        "nmse_dB": -5.105923781531638,
+        "est_snr_dB": 5.105923781531637,
+        "rsrp_err_dB": 1.1680967516615577,
+        "pdp_corr": 0.9889041944966295,
+        "sigma1_corr": -0.004241100242020996,
+        "cov_fro_err": 0.032505011108322795,
+        "ls_alpha_mag": 0.9999999999999992,
+        "N": 1
+      },
+      {
+        "nmse_dB": -4.86338770046853,
+        "est_snr_dB": 4.86338770046853,
+        "rsrp_err_dB": 1.222511426071209,
+        "pdp_corr": 0.999161197163606,
+        "sigma1_corr": 0.038771333939930305,
+        "cov_fro_err": 0.03940698304770366,
+        "ls_alpha_mag": 0.9995378733823646,
+        "N": 2
+      },
+      {
+        "nmse_dB": -6.060660674043147,
+        "est_snr_dB": 6.060660674043147,
+        "rsrp_err_dB": 0.9588009590482832,
+        "pdp_corr": 0.9975303507486304,
+        "sigma1_corr": 0.12970919159382668,
+        "cov_fro_err": 0.03434130134229476,
+        "ls_alpha_mag": 0.9997333355290506,
+        "N": 3
+      },
+      {
+        "nmse_dB": -6.9023239128319736,
+        "est_snr_dB": 6.9023239128319736,
+        "rsrp_err_dB": 0.8048820170774474,
+        "pdp_corr": 0.998951667226893,
+        "sigma1_corr": 0.12152949551249197,
+        "cov_fro_err": 0.03278234854232479,
+        "ls_alpha_mag": 0.9998139964366867,
+        "N": 5
+      },
+      {
+        "nmse_dB": -7.863952796448549,
+        "est_snr_dB": 7.863952796448549,
+        "rsrp_err_dB": 0.6565796505290143,
+        "pdp_corr": 0.9997099535267504,
+        "sigma1_corr": 0.14916925845493437,
+        "cov_fro_err": 0.030561440013778935,
+        "ls_alpha_mag": 0.9998611130099853,
+        "N": 8
+      },
+      {
+        "nmse_dB": -7.8509526400360095,
+        "est_snr_dB": 7.850952640036011,
+        "rsrp_err_dB": 0.658590925095135,
+        "pdp_corr": 0.9998467544265709,
+        "sigma1_corr": 0.13725048115903635,
+        "cov_fro_err": 0.03179476971693718,
+        "ls_alpha_mag": 0.9998820374239761,
+        "N": 9
+      }
+    ]
+  },
+  "SNR_axis": {
+    "sweep_dir": "/home/dclcom57/OAI_luuuuuu/DevChannelProxyJIN/logs/optfilt_test_20260512_2120/legacy_filt",
+    "fixed_N": 100,
+    "snr_points": [
+      [
+        20.0,
+        "snr_20dB"
+      ]
+    ],
+    "points": [
+      {
+        "nmse_dB": -7.8509526400360095,
+        "est_snr_dB": 7.850952640036011,
+        "rsrp_err_dB": 0.658590925095135,
+        "pdp_corr": 0.9998467544265709,
+        "sigma1_corr": 0.13725048115903635,
+        "cov_fro_err": 0.03179476971693718,
+        "ls_alpha_mag": 0.9998820374239761,
+        "snr_dB": 20.0,
+        "N_used": 9,
+        "agc": {
+          "mode": "none"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+# ============================================================
+# Simulation / runtime requirements — needs GPU (CUDA)
+# Used by: v0.py, v1.py, v4.py, channel_coefficients_JIN.py,
+#          ablation_pdp_experiment.py
+# Install on GPU EC2 (e.g. g5.xlarge, Ubuntu 22.04 + CUDA 12.x):
+#     pip install -r requirements.txt
+#     pip install -r requirements-sim.txt
+#
+# NOTE: Pin the exact versions you were running in the lab
+#       before first EC2 launch. The versions below are SAFE
+#       defaults known to work with Sionna >= 0.19 (Sionna-PHY).
+# ============================================================
+
+# TensorFlow with GPU support (pulls in the right CUDA/cuDNN wheels)
+tensorflow[and-cuda]==2.17.0
+
+# Sionna (migrated to sionna-phy namespace in v1.0+)
+sionna==1.0.2
+
+# CuPy — CUDA 12.x build
+cupy-cuda12x==13.3.0

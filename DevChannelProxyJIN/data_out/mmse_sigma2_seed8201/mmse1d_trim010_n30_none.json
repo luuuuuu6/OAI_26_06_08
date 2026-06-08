@@ -1,0 +1,155 @@
+{
+  "fixed_N_for_SNR_sweep": 30,
+  "plot_dir": "../../data_out/mmse_sigma2_seed8201/mmse1d_trim010_none",
+  "config": {
+    "align_mode": "slot",
+    "align_tol_slots": 20,
+    "agc_mode": "none",
+    "agc_beta": 0.95,
+    "pfa": null,
+    "tag_suffix": ""
+  },
+  "N_axis": {
+    "source_run": "../../logs/mmse_sigma2_seed8201_mmse1d_trim010/snr_10dB",
+    "meta": {
+      "run_dir": "../../logs/mmse_sigma2_seed8201_mmse1d_trim010/snr_10dB",
+      "align_mode": "slot",
+      "tol_slots": 20,
+      "n_srs_raw": 27,
+      "n_gt_raw": 5252,
+      "n_pairs": 27,
+      "n_common": 27,
+      "median_gap_slots": 2,
+      "n_rx": 2,
+      "n_tx": 2,
+      "n_sc": 2048
+    },
+    "n_active_sc": 1248,
+    "n_sc": 2048,
+    "sto_slope": 0.0,
+    "scale": 121.09615365834748,
+    "agc": {
+      "mode": "none"
+    },
+    "pfa": null,
+    "denoise": "none",
+    "points": [
+      {
+        "nmse_dB": 19.53463271778111,
+        "est_snr_dB": -19.53463271778111,
+        "rsrp_err_dB": 19.582707253133034,
+        "pdp_corr": 0.6970235492033583,
+        "sigma1_corr": 0.26477145148324227,
+        "cov_fro_err": 0.03012422945429289,
+        "ls_alpha_mag": 1.0000000000000004,
+        "N": 1
+      },
+      {
+        "nmse_dB": 17.667571488732886,
+        "est_snr_dB": -17.667571488732886,
+        "rsrp_err_dB": 17.740356505470473,
+        "pdp_corr": 0.9526273087048526,
+        "sigma1_corr": 0.24938558900190036,
+        "cov_fro_err": 0.02465801285575562,
+        "ls_alpha_mag": 0.9998971924113372,
+        "N": 2
+      },
+      {
+        "nmse_dB": 17.61586541379344,
+        "est_snr_dB": -17.61586541379344,
+        "rsrp_err_dB": 17.68646826599535,
+        "pdp_corr": 0.967528759475252,
+        "sigma1_corr": 0.2726369216670022,
+        "cov_fro_err": 0.02262251038773433,
+        "ls_alpha_mag": 0.9995453324183023,
+        "N": 3
+      },
+      {
+        "nmse_dB": 18.06149818839885,
+        "est_snr_dB": -18.06149818839885,
+        "rsrp_err_dB": 18.123474510606048,
+        "pdp_corr": 0.9174336615487971,
+        "sigma1_corr": 0.28695083817516953,
+        "cov_fro_err": 0.02022187538666836,
+        "ls_alpha_mag": 0.9993828508965681,
+        "N": 5
+      },
+      {
+        "nmse_dB": 15.063381714134405,
+        "est_snr_dB": -15.063381714134405,
+        "rsrp_err_dB": 15.19349758093552,
+        "pdp_corr": 0.9791177324755567,
+        "sigma1_corr": 0.2863574358940483,
+        "cov_fro_err": 0.020165381239015318,
+        "ls_alpha_mag": 0.9996357781018247,
+        "N": 8
+      },
+      {
+        "nmse_dB": 13.440455794287374,
+        "est_snr_dB": -13.440455794287372,
+        "rsrp_err_dB": 13.632210503546577,
+        "pdp_corr": 0.9851266195442148,
+        "sigma1_corr": 0.23844466589592098,
+        "cov_fro_err": 0.01946563592288263,
+        "ls_alpha_mag": 0.9999317889072875,
+        "N": 10
+      },
+      {
+        "nmse_dB": 8.877052077724263,
+        "est_snr_dB": -8.877052077724262,
+        "rsrp_err_dB": 9.402607568599619,
+        "pdp_corr": 0.9776088022212025,
+        "sigma1_corr": 0.1177697084773881,
+        "cov_fro_err": 0.019314635899009214,
+        "ls_alpha_mag": 0.9996160540132822,
+        "N": 15
+      },
+      {
+        "nmse_dB": 19.326117769234386,
+        "est_snr_dB": -19.326117769234386,
+        "rsrp_err_dB": 19.355618110010266,
+        "pdp_corr": 0.2585212153651808,
+        "sigma1_corr": 0.0051549970651401725,
+        "cov_fro_err": 0.5123542554326687,
+        "ls_alpha_mag": 0.9975938200360823,
+        "N": 20
+      },
+      {
+        "nmse_dB": 20.57129820916185,
+        "est_snr_dB": -20.57129820916185,
+        "rsrp_err_dB": 20.528297212555827,
+        "pdp_corr": 0.19406008007644973,
+        "sigma1_corr": 0.05985255611794279,
+        "cov_fro_err": 0.5396012324251586,
+        "ls_alpha_mag": 0.9907279916099653,
+        "N": 27
+      }
+    ]
+  },
+  "SNR_axis": {
+    "sweep_dir": "../../logs/mmse_sigma2_seed8201_mmse1d_trim010",
+    "fixed_N": 30,
+    "snr_points": [
+      [
+        10.0,
+        "snr_10dB"
+      ]
+    ],
+    "points": [
+      {
+        "nmse_dB": 20.57129820916185,
+        "est_snr_dB": -20.57129820916185,
+        "rsrp_err_dB": 20.528297212555827,
+        "pdp_corr": 0.19406008007644973,
+        "sigma1_corr": 0.05985255611794279,
+        "cov_fro_err": 0.5396012324251586,
+        "ls_alpha_mag": 0.9907279916099653,
+        "snr_dB": 10.0,
+        "N_used": 27,
+        "agc": {
+          "mode": "none"
+        }
+      }
+    ]
+  }
+}

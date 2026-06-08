@@ -1,0 +1,17 @@
+Fair A/B summary
+================
+seed=8301
+snr=10 dB
+delay_comp=OFF
+legacy_run=/home/dclcom57/OAI_luuuuuu/DevChannelProxyJIN/logs/fair_ab_seed8301_20260505_215309/legacy/snr_10dB
+mmse1d_run=/home/dclcom57/OAI_luuuuuu/DevChannelProxyJIN/logs/fair_ab_seed8301_20260505_215309/mmse1d_try1/snr_10dB
+legacy_slot=frames=101, slots=8
+mmse1d_slot=frames=101, slots=8
+
+[denoise=none]
+legacy : N15=+17.52 dB, N30=+17.47 dB, N100=+13.35 dB, PDP30=0.7275, RSRP30=17.42 dB
+mmse1d : N15=+16.17 dB, N30=+11.76 dB, N100=+9.77 dB, PDP30=0.9907, RSRP30=11.92 dB
+
+[denoise=sto]
+legacy : N15=+11.81 dB, N30=+12.94 dB, N100=+11.76 dB, PDP30=0.7525, RSRP30=13.19 dB
+mmse1d : N15=-6.15 dB, N30=-6.79 dB, N100=+2.81 dB, PDP30=0.9959, RSRP30=0.76 dB

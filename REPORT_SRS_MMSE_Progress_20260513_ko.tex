@@ -1,0 +1,343 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{kotex}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{booktabs}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{2026-05-13}
+\lhead{SRS 2D MMSE Progress Report}
+\rfoot{\thepage}
+
+\titleformat{\section}{\large\bfseries}{}{0em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{}
+
+\begin{document}
+
+\begin{center}
+{\LARGE\bfseries SRS 2D MMSE 채널 추정 진행 보고서}\\[0.8em]
+\end{center}
+
+\vspace{1em}
+
+%% ================================================================
+\section{1. 교수님 지도 및 작업 방향}
+
+\subsection{1.1 교수님 4/29 지도}
+
+OAI SRS 채널 추정에 2D MMSE filtering을 도입하여, 현재의 LS + 고정 FIR(filt8/16) pipeline을 대체한다.
+
+\subsection{1.2 교수님 5/7 조회 피드백}
+
+\begin{enumerate}[leftmargin=2em]
+\item \textbf{PDP-MMSE}: LS 추정으로부터 PDP를 먼저 획득한 후 MMSE 계수를 결정하거나, PDP/Doppler 등급에 따라 필터 세트를 사전 설정할 수 있다
+\item \textbf{적응형 필터링 trade-off}: LMS는 수렴이 빠르나 성능이 낮고, RLS는 성능이 좋으나 복잡하며, Lattice-RLS가 균형점이다
+\item \textbf{복잡도가 경성 제약}: SRS 블록 수준의 실행 시간 증가는 반드시 negligible 해야 한다
+\end{enumerate}
+
+\subsection{1.3 금주 작업 방향}
+
+\begin{enumerate}[leftmargin=2em]
+\item 3가지 후보 방안(주파수 영역 MMSE, 시간 영역 EWMA, Lattice-RLS) 탐색 및 성능-복잡도 trade-off 평가
+\item Legacy pipeline의 NMSE floor($\approx -7$\,dB) 발견 및 진단, 근본 원인을 int16 신호 진폭으로 특정
+\item 2D MMSE의 올바른 아키텍처 결정: 분리 가능 필터링(1D 시간 Wiener + 1D 주파수 Wiener)
+\item Proxy 채널 모델에서 ``유사 정적 채널''을 유발하는 버그 수정
+\end{enumerate}
+
+%% ================================================================
+\section{2. 방안 탐색 및 선택}
+
+\subsection{2.1 방안 A: 주파수 영역 PDP$\to$R MMSE}
+
+완전한 1D 주파수 영역 MMSE 채널 추정기를 구현하였다:
+\[
+\text{LS} \;\to\; \text{IFFT} \;\to\; \text{PDP} \;\to\; R(\Delta k) \;\to\; \text{per-SC MMSE solve}
+\]
+OAI \texttt{nr\_srs\_mmse.c}에 약 160줄의 코드를 추가하였다.
+
+\begin{table}[h]\centering
+\begin{tabular}{lcc}
+\toprule
+지표 & Legacy & PDP$\to$R MMSE \\
+\midrule
+NMSE p50 (SNR=20\,dB) & $-7.12$\,dB & $-2.46$\,dB \\
+단일 프레임 실행 시간 & $\sim$0.1\,ms & \textbf{5--10\,ms} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{탈락 사유}: 처리 시간이 50--100배 증가하여 negligible 제약을 만족하지 못한다. 다만 주파수 영역 MMSE가 filt8/16을 대체하는 \textbf{방향의 타당성}은 검증되었다.
+
+\subsection{2.2 방안 B: 시간 영역 EWMA 평활 — 유효성 검증 완료}
+
+지수 가중 이동 평균(EWMA) 시간 영역 필터링을 구현하였다:
+\[
+\hat{H}_{\text{smooth}}(t) = \alpha \cdot \hat{H}_{\text{smooth}}(t\!-\!1) + (1\!-\!\alpha) \cdot \hat{H}_{\text{new}}(t)
+\]
+
+\textbf{정적 채널 실측} (speed=0, SNR=20\,dB, seed=42):
+
+\begin{table}[h]\centering
+\begin{tabular}{lccc}
+\toprule
+지표 & Legacy & EWMA $\alpha=0.9$ & 개선 \\
+\midrule
+NMSE p50 & $-6.53$\,dB & $\mathbf{-7.08}$\,dB & $+0.55$\,dB \\
+NMSE p90 & $-0.89$\,dB & $\mathbf{-4.41}$\,dB & $+3.52$\,dB \\
+spread (p90$-$p10) & 6.68\,dB & 3.55\,dB & 3.13\,dB 축소 \\
+추가 실행 시간 & --- & negligible & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+EWMA는 SRS 채널 추정에 대한 시간 영역 평활의 유효성을 검증하였다 (2D MMSE의 시간 차원).
+
+\subsection{2.3 방안 C: Lattice-RLS M=2}
+
+Haykin Ch.16을 참조하여 M=2 LSL을 구현하고 검증하였다.
+
+\textbf{결론}: Lattice-RLS는 adaptive equalization 시나리오($d = \text{known pilot},\; u = \text{received}$)에서는 유효하다. 그러나 channel state smoothing 시나리오($d = u = \text{noisy LS}$)에서는 joint-process estimator의 최적해가 identity filter($\rho_0=1$, 나머지 0)로 퇴화하며, 이는 구현 버그가 아닌 수학적 성질이다.
+
+\subsection{2.4 방안 선택 요약}
+
+\begin{table}[h]\centering
+\begin{tabular}{lccc}
+\toprule
+방안 & NMSE 개선 & 복잡도 증가 & 결론 \\
+\midrule
+PDP$\to$R 주파수 MMSE & 방향 타당, 구현 과중 & 50--100배 & 탈락 \\
+\textbf{EWMA 시간 평활} & \textbf{p50 +0.55, p90 +3.52\,dB} & \textbf{negligible} & \textbf{검증 완료} \\
+Lattice-RLS & identity로 퇴화 & 중간 & 부적합 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%% ================================================================
+\section{3. $-4.8$\,dB 단일 프레임 정밀도 병목: 진단 및 분석}
+
+방안 탐색 과정에서, 어떤 알고리즘(Legacy LS+filt8 / PDP$\to$R MMSE / EWMA)을 사용하든 OAI의 단일 프레임 SRS 채널 추정 NMSE가 약 $-7$\,dB를 돌파하지 못하는 것을 발견하였다. 이 floor는 SNR 향상(20$\to$40\,dB에서 0.36\,dB만 개선)이나 보간 방법 변경(filt8 생략 시 0.15\,dB만 개선)으로도 개선되지 않았다. 이에 체계적 진단을 수행하였다.
+
+\subsection{3.1 통제 변수 실험}
+
+Floor의 원인을 특정하기 위해, 가능한 요인들을 순차적으로 배제하는 통제 변수 실험을 설계하였다:
+
+\begin{table}[h]\centering
+\begin{tabular}{p{4.5cm}p{3.5cm}p{5.5cm}}
+\toprule
+실험 & 목적 & 결과 \\
+\midrule
+passthru (filt8 생략, LS만 출력) & filt8이 floor의 주요 원인인지 검증 & NMSE 차이 0.15\,dB $\to$ \textbf{filt8은 주요 원인이 아님} \\
+\addlinespace
+정적 채널 (speed=0) & Doppler 및 프레임 간 정렬 간섭 제거 & floor 여전히 $-6.5$\,dB $\to$ \textbf{이동성과 무관} \\
+\addlinespace
+SNR=40\,dB 정적 채널 & thermal noise 기여분 제거 & p50 0.36\,dB만 개선 $\to$ \textbf{SNR과 무관} \\
+\addlinespace
+Float64 시뮬레이션 (Python, filt8/sinc/Wiener) & 보간 알고리즘 및 계수 설계 문제 배제 & float에서 모든 방법 $-20\sim -22$\,dB 달성 $\to$ \textbf{int16 링크가 차이의 원인} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{핵심 추론}:
+\begin{itemize}[leftmargin=2em]
+\item passthru $\approx$ Legacy (0.15\,dB 차이): filt8은 도움도 해도 되지 않으며, floor는 filt8 \textbf{상류}(LS 추정 자체)에 존재
+\item Float64 시뮬레이션에서 $-22$\,dB 달성: 동일한 filt8 알고리즘이 float 정밀도에서는 정상 작동하므로, floor는 \textbf{int16 고정소수점 정밀도}에 기인
+\item SNR=40에서도 거의 개선 없음: floor는 thermal noise가 아닌 int16 링크가 도입한 \textbf{양자화 왜곡}
+\end{itemize}
+
+\subsection{3.2 근본 원인 특정: int16 신호 진폭 과소}
+
+int16 링크 각 단계의 신호 진폭을 추적하여 근본 원인을 발견하였다:
+
+OAI의 SRS 기준 신호 진폭 AMP=512 (\texttt{impl\_defs\_top.h}에서 정의)이며, OFDM 변조(IFFT) 후 시간 영역 신호의 RMS는 약 200으로, int16 범위($\pm$32767)의 \textbf{0.6\%}에 불과하다 --- 즉 \textbf{유효 정밀도가 7.6 bit}에 그친다 (int16 총 15 bit).
+
+\begin{table}[h]\centering
+\begin{tabular}{lccc}
+\toprule
+처리 단계 & 신호 RMS & int16 범위 대비 & 유효 비트 수 \\
+\midrule
+UE IFFT 시간 영역 출력 & 200 & \textbf{0.6\%} & 7.6\,bit \\
+Proxy$\to$shm 양자화 후 & $\sim$564 & 1.7\% & 9.1\,bit \\
+OAI FFT 주파수 영역 출력 & 14000 & 42.7\% & 13.8\,bit \\
+LS 나눗셈 출력 & 9900 & 30.2\% & 13.3\,bit \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{핵심 실측 데이터} (정적 채널 speed=0, SNR=20\,dB, 195 프레임):
+
+\begin{table}[h]\centering
+\begin{tabular}{lcc}
+\toprule
+지표 & 기대값 & 실측값 \\
+\midrule
+SRS 프레임 간 correlation & 0.99 & \textbf{0.80} \\
+Per-SC 유효 SNR (mean) & 20\,dB & \textbf{7.0\,dB} \\
+Per-SC 유효 SNR (p10/p50/p90) & --- & $-1.7$ / $5.1$ / $19.5$\,dB \\
+단일 프레임 NMSE (vs 50프레임 평균 GT) & $-20$\,dB & $\mathbf{-4.8}$\,dB \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{요약}: SNR=20\,dB 설정에서 단일 프레임 LS의 NMSE는 $-4.8$\,dB에 불과하다 (유효 SNR 약 7\,dB, 13\,dB 손실). 이는 OAI의 단일 프레임 LS 추정 정밀도가 알고리즘이나 thermal noise가 아닌 int16 신호 진폭에 의해 제한됨을 의미한다.
+
+\subsection{3.3 검증: 시간 영역 다중 프레임 평균으로 floor 돌파 가능}
+
+Floor가 per-frame int16 양자화 왜곡(프레임 간 근사 독립)에서 기인하므로, 다중 프레임 평균은 $+10\log_{10}(N)$\,dB의 속도로 NMSE를 감소시켜야 한다. 정적 채널 데이터에서 이를 검증하였다:
+
+\begin{table}[h]\centering
+\begin{tabular}{rrrrrr}
+\toprule
+$W$ & NMSE (all) & NMSE (pilot) & NMSE (mid) & 실측 gain & 이론 $10\lg W$ \\
+\midrule
+1 & $-4.8$\,dB & $-4.8$\,dB & $-4.8$\,dB & 0\,dB & 0\,dB \\
+2 & $-9.1$ & $-9.1$ & $-9.0$ & $+4.3$ & $+3.0$ \\
+5 & $-12.8$ & $-12.8$ & $-12.7$ & $+7.9$ & $+7.0$ \\
+10 & $-14.8$ & $-14.8$ & $-14.7$ & $+10.0$ & $+10.0$ \\
+20 & $-16.9$ & $-16.9$ & $-16.9$ & $+12.1$ & $+13.0$ \\
+50 & $-20.8$ & $-20.9$ & $-20.8$ & $+16.0$ & $+17.0$ \\
+100 & $-24.3$ & $-24.3$ & $-24.3$ & $+19.5$ & $+20.0$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{관찰}:
+\begin{enumerate}[leftmargin=2em]
+\item 실측 이득이 이론값 $10\log_{10}(W)$를 거의 완벽하게 추종하며, $W=10$에서 $+10.0$\,dB (이론 $+10.0$)에 도달
+\item Pilot SC와 Midpoint SC의 NMSE가 완전히 일치하여, filt8이 추가 오차를 도입하지 않음을 재확인
+\item $W=100$ 프레임에서 NMSE $-24.3$\,dB에 도달하여, floor가 극복 불가능한 것이 아님을 입증
+\end{enumerate}
+
+\textbf{EWMA 검증} (구현된 OAI EWMA와 대조):
+
+\begin{table}[h]\centering
+\begin{tabular}{rrrr}
+\toprule
+$\alpha$ & $N_{\text{eff}} = 1/(1\!-\!\alpha)$ & NMSE & Gain \\
+\midrule
+0.00 & 1 & $-4.8$\,dB & 0\,dB \\
+0.50 & 2 & $-10.5$ & $+5.7$ \\
+0.80 & 5 & $-14.6$ & $+9.8$ \\
+0.90 & 10 & $-16.8$ & $+11.9$ \\
+0.95 & 20 & $-18.6$ & $+13.8$ \\
+0.98 & 50 & $-20.2$ & $+15.4$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{3.4 2D MMSE 설계에 대한 시사점}
+
+Floor 진단이 2D MMSE의 올바른 아키텍처를 직접 결정하였다:
+
+\begin{table}[h]\centering
+\begin{tabular}{p{5cm}p{8cm}}
+\toprule
+진단 결론 & 2D MMSE 설계에 대한 영향 \\
+\midrule
+passthru $\approx$ legacy (filt8은 병목이 아님) & filt8을 유지할 필요 없이, 주파수 영역 MMSE로 완전 대체 가능 \\
+\addlinespace
+단일 프레임 정밀도 $-4.8$\,dB, int16 진폭에 의해 제한 & \textbf{시간 영역 다중 프레임 평균이 정밀도 향상의 주력} ($W=10$으로 $+10$\,dB) \\
+\addlinespace
+이득이 $10\log_{10}(W)$ 이론값을 추종 & 프레임 간 양자화 왜곡이 근사 독립이므로, MMSE 시간 필터링으로 최적 이득 획득 가능 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%% ================================================================
+\section{4. 다음 단계 — 분리 가능 2D MMSE}
+
+\subsection{4.1 아키텍처}
+
+근본 원인 분석에 기반하여, 올바른 2D MMSE 아키텍처(산업계 표준의 분리 가능 필터링)를 결정하였다:
+
+\begin{center}
+\fbox{\parbox{0.85\textwidth}{
+\textbf{OAI 기존}: $\text{LS}_{624} \;\to\; \text{filt8}_{624\to 1248} \;\to\; \text{출력}$ \quad [단일 프레임, 유효 SNR $\approx$ 2\,dB] \\[0.5em]
+\textbf{2D MMSE}: $\text{LS}_{624} \;\to\; \underbrace{\text{시간 Wiener}}_{\text{N 프레임 간}} \;\to\; \underbrace{\text{주파수 Wiener}}_{\text{filt8 대체, } 624\to 1248} \;\to\; \text{출력}$
+}}
+\end{center}
+
+\textbf{핵심 설계}: 시간 Wiener는 filt8 \textbf{이전}(624 pilot SC 상에서)에 수행하고, 주파수 Wiener가 filt8을 \textbf{대체}한다.
+
+\textbf{이유}: filt8은 백색 잡음을 유색화하여, 후속 주파수 영역 MMSE의 공식
+\[
+\mathbf{w} = \left(\mathbf{R}_{HH} + \sigma^2 \mathbf{I}\right)^{-1} \mathbf{r}_{Hd}
+\]
+이 무효화된다 ($\sigma^2 \mathbf{I}$는 잡음의 독립성을 요구). Pilot SC 상에서 시간 필터링을 먼저 수행하면 잡음이 백색을 유지하여 MMSE 최적성이 성립한다.
+
+\subsection{4.2 복잡도 및 성능 예측}
+
+\begin{table}[h]\centering
+\begin{tabular}{lccl}
+\toprule
+단계 & 연산량 & 소요 시간 & 설명 \\
+\midrule
+시간 Wiener & $W \times 624 \times 4$ & $\sim$0.05\,ms & pilot SC 상에서 프레임 간 결합 \\
+주파수 Wiener & $624 \times 4 \times 4$ & $\sim$0.01\,ms & filt8 대체, MMSE 보간 \\
+\midrule
+\textbf{합계} & --- & $\mathbf{\sim 0.06}$\,\textbf{ms} & negligible 요건 충족 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{메모리}: $W=20$ 프레임 $\times$ 2(rx) $\times$ 2(tx) $\times$ 624(pilot) $\times$ 4(bytes) = \textbf{200\,KB} 링 버퍼.
+
+\textbf{예상 성능} (정적 채널 SNR=20\,dB):
+
+\begin{itemize}[leftmargin=2em]
+\item 시간 영역 $W=10$ 프레임 평균: 유효 SNR 2.3 $\to$ \textbf{12.3\,dB} ($+10$\,dB)
+\item 주파수 영역 MMSE 추가: 추가 \textbf{3$\sim$5\,dB} 주파수 영역 이득
+\item 합계: NMSE $-2$\,dB에서 $\mathbf{-15 \sim -17}$\,\textbf{dB}로 개선
+\end{itemize}
+
+\subsection{4.3 향후 과제}
+
+\begin{itemize}[leftmargin=2em]
+\item Python 오프라인 프로토타입으로 완전한 2D MMSE(시간 Wiener + 주파수 Wiener) 검증
+\item OAI C 코드 구현 + 다중 SNR 포인트 sweep 실측
+\item NMSE vs SNR 곡선 + 실행 시간 프로파일링
+\end{itemize}
+
+%% ================================================================
+\section{5. 부록: 산출물 목록}
+
+\subsection{OAI 코드}
+
+\begin{table}[h]\centering
+\begin{tabular}{ll}
+\toprule
+파일 & 내용 \\
+\midrule
+\texttt{nr\_srs\_mmse.c/h} & PDP$\to$R 주파수 MMSE + estimator dispatcher \\
+\texttt{nr\_srs\_2d\_filter.c/h} & EWMA 시간 평활 (향후 완전한 2D MMSE로 확장 예정) \\
+\texttt{nr\_ul\_channel\_estimation.c} & dispatcher 확장 + SRS X\_ref dump \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{평가 및 진단 도구}
+
+\begin{table}[h]\centering
+\begin{tabular}{ll}
+\toprule
+파일 & 용도 \\
+\midrule
+\texttt{eval\_pdpR\_nmse.py} & NMSE 평가 (LS-aligned + per-frame percentile) \\
+\texttt{oai\_dft\_wrapper.py} & OAI bit-exact int16 DFT2048 Python 래퍼 \\
+\texttt{test\_sinc\_interpolation.py} & Float64 보간 방법 비교 시뮬레이션 \\
+\texttt{preflight.sh} & sweep 전 정리 + launch\_all 통합 \\
+\texttt{run\_q4\_snr\_sweep\_v8.sh} & SNR sweep 드라이버 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}

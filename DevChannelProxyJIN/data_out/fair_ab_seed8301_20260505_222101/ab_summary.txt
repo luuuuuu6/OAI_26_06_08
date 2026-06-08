@@ -1,0 +1,25 @@
+Fair A/B summary
+================
+seed=8301
+snr=10 dB
+delay_comp=OFF
+legacy_run=/home/dclcom57/OAI_luuuuuu/DevChannelProxyJIN/logs/fair_ab_seed8301_20260505_222101/legacy/snr_10dB
+mmse1d_run=/home/dclcom57/OAI_luuuuuu/DevChannelProxyJIN/logs/fair_ab_seed8301_20260505_222101/mmse1d_try2/snr_10dB
+legacy_slot=frames=102, slots=8
+mmse1d_slot=frames=85, slots=8
+
+[denoise=none]
+legacy : N15=+16.82 dB, N30=+11.85 dB, N100=+1.88 dB, PDP30=0.9968, RSRP30=12.14 dB
+mmse1d : N15=+16.95 dB, N30=+27.03 dB, N100=+54.07 dB, PDP30=0.1681, RSRP30=26.89 dB
+
+[denoise=sto]
+legacy : N15=-6.33 dB, N30=-7.51 dB, N100=-6.42 dB, PDP30=0.9891, RSRP30=0.72 dB
+mmse1d : N15=-7.07 dB, N30=+26.59 dB, N100=+42.58 dB, PDP30=0.0813, RSRP30=26.60 dB
+
+[sto_diagnostics]
+legacy : median_gap_slots=3, sto_slope=-0.005862 rad/bin, sto_samples=-1.91, pf_sto_range=[-3.89, +2.56], pf_sto_median=-0.00, pf_sto_std=1.41, paired=102
+mmse1d : median_gap_slots=2, sto_slope=-0.005635 rad/bin, sto_samples=-1.84, pf_sto_range=[-13.13, +12.93], pf_sto_median=-1.65, pf_sto_std=4.37, paired=85
+
+[bad_frame_diagnostics]
+legacy : top_bad_frames=#1(frame=472,slot=8,abs=9448,gap=2,nmse=+26.88dB,sto=+1.36); #2(frame=864,slot=8,abs=17288,gap=5,nmse=+24.19dB,sto=+2.00); #3(frame=880,slot=8,abs=17608,gap=3,nmse=+23.39dB,sto=+1.99); #4(frame=464,slot=8,abs=9288,gap=4,nmse=+23.28dB,sto=+1.99); #5(frame=560,slot=8,abs=11208,gap=2,nmse=+23.15dB,sto=+1.92); #6(frame=424,slot=8,abs=8488,gap=2,nmse=+23.06dB,sto=+2.01); #7(frame=872,slot=8,abs=17448,gap=4,nmse=+23.01dB,sto=+1.99); #8(frame=616,slot=8,abs=12328,gap=1,nmse=+22.82dB,sto=-0.01)
+mmse1d : top_bad_frames=#1(frame=88,slot=8,abs=42728,gap=1,nmse=+49.80dB,sto=-3.96); #2(frame=472,slot=8,abs=50408,gap=3,nmse=+43.51dB,sto=-3.77); #3(frame=320,slot=8,abs=26888,gap=1,nmse=+41.96dB,sto=-7.01); #4(frame=912,slot=8,abs=18248,gap=0,nmse=+41.29dB,sto=-3.29); #5(frame=552,slot=8,abs=31528,gap=4,nmse=+39.16dB,sto=+1.94); #6(frame=96,slot=8,abs=22408,gap=5,nmse=+38.35dB,sto=-8.03); #7(frame=312,slot=8,abs=26728,gap=0,nmse=+38.22dB,sto=-1.70); #8(frame=736,slot=8,abs=35208,gap=1,nmse=+37.98dB,sto=-1.81)

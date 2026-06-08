@@ -1,0 +1,24 @@
+services:
+  sionna-proxy:
+    image: oai_sionna_luuuuuu-oai_sionna_proxy:latest
+    container_name: sionna-proxy
+    network_mode: host
+    ipc: host
+    privileged: true
+    environment:
+      - NVIDIA_DRIVER_CAPABILITIES=graphics,compute,utility
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - ./vRAN_Socket:/workspace/vRAN_Socket
+      - ./openairinterface5g_whan:/workspace/openairinterface5g_whan
+      - /tmp/oai_gpu_ipc:/tmp/oai_gpu_ipc
+    working_dir: /workspace
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    tty: true
+    stdin_open: true
